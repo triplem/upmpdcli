@@ -1,3 +1,7 @@
+
+# This should be from configure'd CFLAGS 
+AM_CPPFLAGS = -DDEBUG -g
+
 lib_LTLIBRARIES = libupnpp.la
 
 libupnpp_la_SOURCES = \
@@ -6,10 +10,18 @@ libupnpp_la_SOURCES = \
     libupnpp/description.cxx \
     libupnpp/discovery.cxx \
     libupnpp/ixmlwrap.cxx \
-    libupnpp/upnpplib.cxx
+    libupnpp/upnpplib.cxx \
+    libupnpp/getsyshwaddr.c \
+    libupnpp/vdir.cxx \
+    libupnpp/soaphelp.cxx \
+    libupnpp/md5.cxx
 
-bin_PROGRAMS = upexplorer
+bin_PROGRAMS = upexplorer upmpdcli
 
 upexplorer_SOURCES = upexplo/upexplo.cxx
-upexplorer_LDADD = libupnpp.la
-upexplorer_LDFLAGS = -lixml -lupnp -lexpat -lpthread 
+upexplorer_LDADD = libupnpp.la -lixml -lupnp -lexpat -lpthread 
+#upexplorer_LDFLAGS = 
+
+upmpdcli_SOURCES = upmpd/upmpd.cxx upmpd/mpdcli.cxx
+upmpdcli_LDADD = libupnpp.la -lixml -lupnp -lexpat -lmpdclient -lpthread 
+#upmpdcli_LDFLAGS = 

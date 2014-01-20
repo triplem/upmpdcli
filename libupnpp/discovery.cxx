@@ -171,8 +171,8 @@ static void *discoExplorer(void *)
 	}
 }
 
-// This gets called for all libupnp asynchronous events, in a libupnp
-// thread context.
+// This gets called in a libupnp thread context for all asynchronous
+// events which we asked for.
 // Example: ContentDirectories appearing and disappearing from the network
 // We queue a task for our worker thread(s)
 // It seems that this can get called by several threads. We have a
@@ -203,12 +203,10 @@ static int cluCallBack(Upnp_EventType et, void* evp, void*)
 	{
 		struct Upnp_Discovery *disco = (struct Upnp_Discovery *)evp;
 
-		if (isMSDevice(disco->DeviceType) || isCDService(disco->ServiceType)) {
-			PLOGDEB("BYEBYE: %s\n", cluDiscoveryToStr(disco).c_str());
-			DiscoveredTask *tp = new DiscoveredTask(0, disco);
-			if (discoveredQueue.put(tp)) {
-				return UPNP_E_FINISH;
-			}
+		PLOGDEB("BYEBYE: %s\n", cluDiscoveryToStr(disco).c_str());
+		DiscoveredTask *tp = new DiscoveredTask(0, disco);
+		if (discoveredQueue.put(tp)) {
+			return UPNP_E_FINISH;
 		}
 		break;
 	}
@@ -364,3 +362,10 @@ bool UPnPDeviceDirectory::getServer(const string& friendlyName,
 	}
 	return false;
 }
+
+/* Local Variables: */
+/* mode: c++ */
+/* c-basic-offset: 4 */
+/* tab-width: 4 */
+/* indent-tabs-mode: t */
+/* End: */

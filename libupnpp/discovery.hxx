@@ -53,8 +53,7 @@ public:
 
 	/** Retrieve the directory services currently seen on the network */
 	bool getDirServices(std::vector<ContentDirectoryService>&);
-
-
+	/** Retrieve specific service designated by its friendlyName */
 	bool getServer(const string& friendlyName, ContentDirectoryService& server);
 
 	/** My health */

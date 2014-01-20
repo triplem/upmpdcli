@@ -15,6 +15,8 @@
  *	 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
+#include <string.h>
+
 #include <string>
 #include <iostream>
 #include <sstream>
@@ -32,19 +34,23 @@ using std::set;
 
 #include "upnpp_p.hxx"
 #include "upnpplib.hxx"
+extern "C" {
+#include "getsyshwaddr.h"
+}
+#include "md5.hxx"
 
 static LibUPnP *theLib;
 
-LibUPnP *LibUPnP::getLibUPnP()
+LibUPnP *LibUPnP::getLibUPnP(bool server)
 {
 	if (theLib == 0)
-		theLib = new LibUPnP;
+		theLib = new LibUPnP(server);
 	if (theLib && !theLib->ok())
 		return 0;
 	return theLib;
 }
 
-LibUPnP::LibUPnP()
+LibUPnP::LibUPnP(bool server)
 	: m_ok(false)
 {
 	m_init_error = UpnpInit(0, 0);
@@ -53,20 +59,48 @@ LibUPnP::LibUPnP()
 		return;
 	}
 	setMaxContentLength(2000*1024);
+
 #ifdef DEBUG
+	const char *ip_address = UpnpGetServerIpAddress();
+	int port = UpnpGetServerPort();
+	cerr << "Using IP " << ip_address << " port " << port << endl;
 	UpnpCloseLog();
 #endif
-	m_init_error = UpnpRegisterClient(o_callback, (void *)this, &m_clh);
-	if (m_init_error == UPNP_E_SUCCESS) {
-		//	cerr << "Initialized on " << UpnpGetServerIpAddress() <<
-		//		"with cookie = " << this << endl;
+
+	if (server) {
 		m_ok = true;
 	} else {
-		cerr << errAsString("UpnpRegisterClient", m_init_error);
+		// Client initialization is simple, just do it. Defer device init
+		// completion because it's more complicated.
+		m_init_error = UpnpRegisterClient(o_callback, (void *)this, &m_clh);
+		
+		if (m_init_error == UPNP_E_SUCCESS) {
+			m_ok = true;
+		} else {
+			cerr << errAsString("UpnpRegisterClient", m_init_error) << endl;
+		}
 	}
 
-	// Servers sometimes make error (e.g.: minidlna returns bad utf-8)
+	// Servers sometimes make error (e.g.: minidlna returns bad
+	// utf-8). 
 	ixmlRelaxParser(1);
+}
+
+int LibUPnP::setupWebServer(const string& description)
+{
+	//static const string description("/tmp/description.xml");
+	//m_init_error = UpnpSetWebServerRootDir("/tmp/root");
+	int res = UpnpRegisterRootDevice2(
+		UPNPREG_BUF_DESC,
+		description.c_str(), 
+		description.size(), /* Desc filename len, ignored */
+		1, /* URLBase*/
+		o_callback, (void *)this, &m_dvh);
+
+	if (res != UPNP_E_SUCCESS) {
+		cerr << errAsString("UpnpRegisterRootDevice2", m_init_error) << endl;
+	}
+	return res;
 }
 
 void LibUPnP::setMaxContentLength(int bytes)
@@ -139,6 +173,28 @@ LibUPnP::~LibUPnP()
 	}
 	PLOGDEB("LibUPnP: done\n");
 }
+
+string LibUPnP::makeDevUUID(const string& name)
+{
+	string digest;
+	MD5String(name, digest);
+	// digest has 16 bytes of binary data. UUID is like:
+	// f81d4fae-7dec-11d0-a765-00a0c91e6bf6
+	// Where the last 12 chars are provided by the hw addr
+
+	char hw[20];
+	if (getsyshwaddr(hw, 13) < 0) {
+		cerr << "LibUPnP::makeDevUUID: failed retrieving hw addr" << endl;
+		strcpy(hw, "2e87682c5ce8");
+	}
+	char uuid[100];
+	sprintf(uuid, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%s",
+			digest[0]&0xff, digest[1]&0xff, digest[2]&0xff, digest[3]&0xff,
+			digest[4]&0xff, digest[5]&0xff,  digest[6]&0xff, digest[7]&0xff,
+			digest[8]&0xff, digest[9]&0xff, hw);
+	return uuid;
+}
+
 
 string LibUPnP::evTypeAsString(Upnp_EventType et)
 {
@@ -222,6 +278,19 @@ string path_getfather(const string &s)
 	father.erase(slp);
 	path_catslash(father);
 	return father;
+}
+string path_getsimple(const string &s) {
+    string simple = s;
+
+    if (simple.empty())
+        return simple;
+
+    string::size_type slp = simple.rfind('/');
+    if (slp == string::npos)
+        return simple;
+
+    simple.erase(0, slp+1);
+    return simple;
 }
 
 template <class T> bool csvToStrings(const string &s, T &tokens)

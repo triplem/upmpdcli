@@ -64,7 +64,7 @@ public:
 	}
 
 	/** An empty one */
-	ContentDirectoryService() = default;
+	ContentDirectoryService() {}
 
 	/** Read a container's children list into dirbuf.
 	 *

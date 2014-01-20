@@ -24,8 +24,9 @@
 #include <string>
 
 extern std::string caturl(const std::string& s1, const std::string& s2);
-extern void trimstring(string &s, const char *ws = " \t\n");
+extern void trimstring(std::string &s, const char *ws = " \t\n");
 extern std::string path_getfather(const std::string &s);
+extern std::string path_getsimple(const std::string &s);
 template <class T> bool csvToStrings(const std::string& s, T &tokens);
 
 #define UPNPP_DEBUG

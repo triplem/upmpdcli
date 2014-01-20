@@ -9,5 +9,7 @@ LT_INIT
 
 AC_PROG_CXX
 
+AC_CHECK_FUNCS([getifaddrs])
+
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

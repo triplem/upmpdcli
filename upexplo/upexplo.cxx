@@ -25,9 +25,9 @@
 #include <vector>
 using namespace std;
 
-#include "upnpplib.hxx"
-#include "discovery.hxx"
-#include "cdirectory.hxx"
+#include "libupnpp/upnpplib.hxx"
+#include "libupnpp/discovery.hxx"
+#include "libupnpp/cdirectory.hxx"
 
 void listServers(LibUPnP *lib, UPnPDeviceDirectory *superdir)
 {
@@ -227,7 +227,10 @@ int main(int argc, char *argv[])
 	}
 
 	if ((op_flags & OPT_l)) {
-		listServers(mylib, superdir);
+		while (true) {
+			listServers(mylib, superdir);
+			sleep(5);
+		}
 	} else if ((op_flags & OPT_m)) {
 		getMetadata(mylib, superdir, fname, arg);
 	} else if ((op_flags & OPT_r)) {

@@ -35,9 +35,14 @@ public:
 	 * On the first call, this initializes libupnp and registers us as a 
 	 * client, but does not perform any other action (does not start
 	 * discovery)
+	 * @param server Act as server (implement device) if true, client else.
+	 *   This is only used on the first call, it's ignored once the library is
+	 *   initialized.
 	 * @return 0 for failure.
 	 */
-	static LibUPnP* getLibUPnP();
+	static LibUPnP* getLibUPnP(bool server = false);
+
+	int setupWebServer(const std::string& description);
 
 	/** Set log file name and activate logging.
 	 *
@@ -45,8 +50,7 @@ public:
 	 */
 	bool setLogFileName(const std::string& fn);
 
-	/** Set max library buffer size for reading content from servers.
-	 * The default is 200k and should be ok */
+	/** Set max library buffer size for reading content from servers. */
 	void setMaxContentLength(int bytes);
 
 	/** Check state after initialization */
@@ -66,16 +70,21 @@ public:
 	 */
 	void registerHandler(Upnp_EventType et, Upnp_FunPtr handler, void *cookie);
 
-	UpnpClient_Handle getclh()
-	{
-		return m_clh;
-	}
+	/** Build a unique persistent UUID for a root device. This uses a hash
+		of the input name (e.g.: friendlyName), and the host Ethernet address */
+	static std::string makeDevUUID(const std::string& name);
 
 	/** Translate integer error code (UPNP_E_XXX) to string */
 	static std::string errAsString(const std::string& who, int code);
 
 	static std::string evTypeAsString(Upnp_EventType);
 
+
+
+	UpnpClient_Handle getclh()
+	{
+		return m_clh;
+	}
 private:
 
 	// A Handler object records the data from registerHandler.
@@ -89,7 +98,7 @@ private:
 		void *cookie;
 	};
 
-	LibUPnP();
+	LibUPnP(bool server);
 	LibUPnP(const LibUPnP &);
 	LibUPnP& operator=(const LibUPnP &);
 
@@ -98,6 +107,7 @@ private:
 	bool m_ok;
 	int	 m_init_error;
 	UpnpClient_Handle m_clh;
+	UpnpDevice_Handle m_dvh;
 	PTMutexInit m_mutex;
 	std::map<Upnp_EventType, Handler> m_handlers;
 };
