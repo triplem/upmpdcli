@@ -21,6 +21,21 @@ using namespace std;
 #include "device.hxx"
 
 unordered_map<std::string, UpnpDevice *> UpnpDevice::o_devices;
+static string xmlquote(const string& in)
+{
+    string out;
+    for (unsigned int i = 0; i < in.size(); i++) {
+        switch(in[i]) {
+        case '"': out += "&quot;";break;
+        case '&': out += "&amp;";break;
+        case '<': out += "&lt;";break;
+        case '>': out += "&gt;";break;
+        case '\'': out += "&apos;";break;
+        default: out += in[i];
+        }
+    }
+    return out;
+}
 
 UpnpDevice::UpnpDevice(const string& deviceId)
     : m_deviceId(deviceId)
@@ -175,6 +190,9 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
             cnames.push_back(names[i].c_str());
         }
 
+        for (unsigned int i = 0; i < values.size(); i++) {
+            values[i] = xmlquote(values[i]);
+        }
         vector<const char *>cvalues;
         cvalues.reserve(values.size());
         for (unsigned int i = 0; i < values.size(); i++) {
@@ -217,20 +235,24 @@ void UpnpDevice::addActionMapping(const std::string& actName, soapfun fun)
 
 void UpnpDevice::notifyEvent(const string& serviceId,
                              const vector<string>& names, 
-                             const vector<string>& values)
+                             const vector<string>& ivalues)
 {
     cerr << "UpnpDevice::notifyEvent" << endl;
     vector<const char *>cnames;
     cnames.reserve(names.size());
-    for (unsigned int i = 0; i < names.size(); i++) {
+    for (unsigned int i = 0; i < names.size(); i++)
         cnames.push_back(names[i].c_str());
-    }
 
+    vector<string> values;
+    values.reserve(ivalues.size());
+    for (unsigned int i = 0; i < ivalues.size(); i++) {
+        values.push_back(xmlquote(ivalues[i]));
+        cerr << "Pushed value: [" << values[i] << "]" << endl;
+    }
     vector<const char *>cvalues;
     cvalues.reserve(values.size());
-    for (unsigned int i = 0; i < values.size(); i++) {
+    for (unsigned int i = 0; i < values.size(); i++)
         cvalues.push_back(values[i].c_str());
-    }
 
     int ret = UpnpNotify(m_lib->getdvh(), m_deviceId.c_str(), 
                          serviceId.c_str(),
