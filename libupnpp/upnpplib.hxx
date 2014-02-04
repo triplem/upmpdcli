@@ -85,6 +85,10 @@ public:
 	{
 		return m_clh;
 	}
+	UpnpDevice_Handle getdvh()
+	{
+		return m_dvh;
+	}
 private:
 
 	// A Handler object records the data from registerHandler.

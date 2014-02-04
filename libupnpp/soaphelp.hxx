@@ -17,16 +17,45 @@
 #ifndef _SOAPHELP_H_X_INCLUDED_
 #define _SOAPHELP_H_X_INCLUDED_
 
-#include <map>
+#include <vector>
 #include <string>
+#include <map>
 
 #include <upnp/ixml.h>
 
-struct SoapCall {
+/** Store returned values after decoding the arguments in a SOAP Call */
+struct SoapArgs {
     std::string name;
     std::map<std::string, std::string> args;
 };
 
-extern bool decodeSoap(const char *name, IXML_Document *actReq, SoapCall *res);
+/** Decode the XML in a Soap call and return the arguments in a SoapArgs 
+ * structure.
+ *
+ * @param name the action name is stored for convenience in the return
+ * structure. The caller normally gets it from libupnp, passing it is simpler
+ * than retrieving from the input top node where it has a namespace qualifier.
+ * @param actReq the XML document containing the SOAP data.
+ * @param[output] res the decoded data.
+ * @return true for success, false if a decoding error occurred.
+ */
+extern bool decodeSoapBody(const char *name, IXML_Document *actReq, 
+                           SoapArgs *res);
+
+/** Store the values to be encoded in a SOAP response. 
+ *
+ * The elements in the response must be in a defined order, so we
+ * can't use a map as container, we use a vector of pairs instead.
+ * The generic UpnpDevice callback fills up name and service type, the
+ * device call only needs to fill the data vector.
+ */
+struct SoapData {
+    std::string name;
+    std::string serviceType;
+    std::vector<std::pair<std::string, std::string> > data;
+};
+
+/** Build a SOAP response data XML document from a list of values */
+extern IXML_Document *buildSoapBody(SoapData& data);
 
 #endif /* _SOAPHELP_H_X_INCLUDED_ */

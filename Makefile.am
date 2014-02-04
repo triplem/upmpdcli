@@ -1,6 +1,6 @@
 
 # This should be from configure'd CFLAGS 
-AM_CPPFLAGS = -DDEBUG -g
+AM_CPPFLAGS = -DDEBUG -g -std=c++0x
 
 lib_LTLIBRARIES = libupnpp.la
 
@@ -8,6 +8,7 @@ libupnpp_la_SOURCES = \
     libupnpp/cdircontent.cxx \
     libupnpp/cdirectory.cxx \
     libupnpp/description.cxx \
+    libupnpp/device.cxx \
     libupnpp/discovery.cxx \
     libupnpp/ixmlwrap.cxx \
     libupnpp/upnpplib.cxx \

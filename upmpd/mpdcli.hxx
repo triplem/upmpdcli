@@ -46,8 +46,7 @@ public:
     ~MPDCli();
     bool ok() {return m_ok;}
     bool setVolume(int ivol, bool relative = false);
-
-
+    int  getVolume();
 private:
     void *m_conn;
     bool m_ok;

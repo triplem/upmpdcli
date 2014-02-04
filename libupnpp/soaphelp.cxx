@@ -27,8 +27,12 @@ using namespace std;
      <Channel>Master</Channel>
      <DesiredMute>False</DesiredMute>
    </ns0:SetMute>
+   
+   As the top node name is qualified by a namespace, it's easier to just use 
+   action name passed in the libupnp action callback.
 */
-bool decodeSoap(const char *callnm, IXML_Document *actReq, SoapCall *res)
+bool decodeSoapBody(const char *callnm, IXML_Document *actReq, 
+                    SoapArgs *res)
 {
     bool ret = false;
     IXML_NodeList* nl = 0;
@@ -38,11 +42,14 @@ bool decodeSoap(const char *callnm, IXML_Document *actReq, SoapCall *res)
         cerr << "decodeSoap: Empty Action request (no topNode) ??" << endl;
         return false;
     }
-        
+    //cerr << "decodeSoap: top node name: " << ixmlNode_getNodeName(topNode) 
+    //<< endl;
+
     nl = ixmlNode_getChildNodes(topNode);
     if (nl == 0) {
         cerr << "decodeSoap: empty Action request (no childs) ??" << endl;
-        return false;
+        // Ok actually, there are no args
+        return true;
     }
     for (unsigned long i = 0; i <  ixmlNodeList_length(nl); i++) {
         IXML_Node *cld = ixmlNodeList_item(nl, i);
@@ -72,4 +79,32 @@ out:
     if (nl)
         ixmlNodeList_free(nl);
     return ret;
+}
+
+
+IXML_Document *buildSoapBody(SoapData& data)
+{
+    IXML_Document *doc = ixmlDocument_createDocument();
+    if (doc == 0) {
+        cerr << "buildSoapResponse: out of memory" << endl;
+        return 0;
+    }
+    string topname = string("u:") + data.name + "Response";
+    IXML_Element *top =  
+        ixmlDocument_createElementNS(doc, data.serviceType.c_str(), 
+                                     topname.c_str());
+    ixmlElement_setAttribute(top, "xmlns:u", data.serviceType.c_str());
+
+    for (unsigned i = 0; i < data.data.size(); i++) {
+        IXML_Element *elt = 
+            ixmlDocument_createElement(doc, data.data[i].first.c_str());
+        IXML_Node* textnode = 
+            ixmlDocument_createTextNode(doc, data.data[i].second.c_str());
+        ixmlNode_appendChild((IXML_Node*)elt,(IXML_Node*)textnode);
+        ixmlNode_appendChild((IXML_Node*)top,(IXML_Node*)elt);
+    }
+
+    ixmlNode_appendChild((IXML_Node*)doc,(IXML_Node*)top);
+    
+    return doc;
 }

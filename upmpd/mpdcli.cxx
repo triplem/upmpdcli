@@ -93,6 +93,12 @@ bool MPDCli::setVolume(int volume, bool relative)
     return true;
 }
 
+int MPDCli::getVolume()
+{
+    updStatus();
+    return m_stat.volume == -1 ? 0: m_stat.volume;
+}
+
 bool MPDCli::updStatus()
 {
     //cerr << "MPDCli::updStatus" << endl;
@@ -103,7 +109,10 @@ bool MPDCli::updStatus()
     memset(&m_stat, 0, sizeof(m_stat));
     mpd_status *mpds = mpd_run_status(M_CONN);
     if (mpds == 0) {
-        cerr << "MPDCli::updStatus: status failed" << endl;
+        cerr << "MPDCli::updStatus: status failed. " <<
+            "connec error: " <<  mpd_connection_get_error_message(M_CONN) <<
+            "server error: " << mpd_connection_get_server_error(M_CONN) <<
+             endl;
         return false;
     }
     m_stat.volume = mpd_status_get_volume(mpds);

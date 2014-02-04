@@ -19,15 +19,20 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include <string>
 #include <iostream>
 #include <vector>
+#include <functional>
+
 using namespace std;
+using namespace std::placeholders;
 
 #include "libupnpp/upnpplib.hxx"
 #include "libupnpp/vdir.hxx"
 #include "libupnpp/soaphelp.hxx"
+#include "libupnpp/device.hxx"
 
 #include "mpdcli.hxx"
 
@@ -49,7 +54,7 @@ static const string deviceDescription1 =
 "    <modelNumber>1.0</modelNumber>\n"
 "    <modelURL>http://www.github.com/medoc92/upmpd</modelURL>\n"
 "    <serialNumber>72</serialNumber>\n"
-"    <UDN>uuid:\n"
+"    <UDN>uuid:"
 	;
 static const string deviceDescription2 = 
 "</UDN>\n"
@@ -250,46 +255,6 @@ string scdp =
 "        </argument>\n"
 "      </argumentList>\n"
 "    </action>\n"
-"    <action>\n"
-"      <name>GetLoudness</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>Channel</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>CurrentLoudness</name>\n"
-"          <direction>out</direction>\n"
-"          <relatedStateVariable>Loudness</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"    <action>\n"
-"      <name>SetLoudness</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>Channel</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>DesiredLoudness</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>Loudness</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
 "  </actionList>\n"
 "  <serviceStateTable>\n"
 "    <stateVariable sendEvents=\"no\">\n"
@@ -309,7 +274,7 @@ string scdp =
 "      <dataType>ui2</dataType>\n"
 "      <allowedValueRange>\n"
 "        <minimum>0</minimum>\n"
-"        <maximum>Vendor defined</maximum>\n"
+"        <maximum>100</maximum>\n"
 "        <step>1</step>\n"
 "      </allowedValueRange>\n"
 "    </stateVariable>\n"
@@ -317,33 +282,16 @@ string scdp =
 "      <name>VolumeDB</name>\n"
 "      <dataType>i2</dataType>\n"
 "      <allowedValueRange>\n"
-"        <minimum>Vendor defined</minimum>\n"
-"        <maximum>Vendor defined</maximum>\n"
-"        <step>Vendor defined</step>\n"
+"        <minimum>-10240</minimum>\n"
+"        <maximum>0</maximum>\n"
+"        <step>1</step>\n"
 "      </allowedValueRange>\n"
-"    </stateVariable>\n"
-"    <stateVariable sendEvents=\"no\">\n"
-"      <name>Loudness</name>\n"
-"      <dataType>boolean</dataType>\n"
 "    </stateVariable>\n"
 "    <stateVariable sendEvents=\"no\">\n"
 "      <name>A_ARG_TYPE_Channel</name>\n"
 "      <dataType>string</dataType>\n"
 "      <allowedValueList>\n"
 "        <allowedValue>Master</allowedValue>\n"
-"        <allowedValue>LF</allowedValue>\n"
-"        <allowedValue>RF</allowedValue>\n"
-"        <allowedValue>CF</allowedValue>\n"
-"        <allowedValue>LFE</allowedValue>\n"
-"        <allowedValue>LS</allowedValue>\n"
-"        <allowedValue>RS</allowedValue>\n"
-"        <allowedValue>LFC</allowedValue>\n"
-"        <allowedValue>RFC</allowedValue>\n"
-"        <allowedValue>SD</allowedValue>\n"
-"        <allowedValue>SL</allowedValue>\n"
-"        <allowedValue>SR </allowedValue>\n"
-"        <allowedValue>T</allowedValue>\n"
-"        <allowedValue>B</allowedValue>\n"
 "      </allowedValueList>\n"
 "    </stateVariable>\n"
 "    <stateVariable sendEvents=\"no\">\n"
@@ -355,82 +303,265 @@ string scdp =
 "      <dataType>string</dataType>\n"
 "      <allowedValueList>\n"
 "        <allowedValue>FactoryDefaults</allowedValue>\n"
-"        <allowedValue>InstallationDefaults</allowedValue>\n"
-"        <allowedValue>Vendor defined</allowedValue>\n"
 "      </allowedValueList>\n"
 "    </stateVariable>\n"
 "  </serviceStateTable>\n"
 "</scpd>\n"
 ;
 
-
-typedef int (*soapfun)(const SoapCall&, MPDCli *) ;
-static map<string, soapfun> soapcalls;
-
-int setMute(const SoapCall& sc, MPDCli *mpdcli)
+// We do db upnp-encoded values from -10240 (0%) to 0 (100%)
+static int percentodbvalue(int value)
 {
-	map<string, string>::const_iterator it = sc.args.find("DesiredMute");
+    int dbvalue;
+    if (value == 0) {
+        dbvalue = -10240;
+    } else {
+        float ratio = float(value)*value / 10000.0;
+        float db = 10 * log10(ratio);
+        dbvalue = int(256 * db);
+    }
+    return dbvalue;
+}
+
+static int dbvaluetopercent(int dbvalue)
+{
+    float db = float(dbvalue) / 256.0;
+    float vol = exp10(db/10);
+    int percent = floor(sqrt(vol * 10000.0));
+	if (percent < 0)	percent = 0;
+	if (percent > 100)	percent = 100;
+    return percent;
+}
+
+class UpMpd : public UpnpDevice {
+public:
+	UpMpd(const string& deviceid, MPDCli *mpdcli);
+
+	int setMute(const SoapArgs& sc, SoapData& data);
+	int getMute(const SoapArgs& sc, SoapData& data);
+	int setVolume(const SoapArgs& sc, SoapData& data, bool isDb);
+	int getVolume(const SoapArgs& sc, SoapData& data, bool isDb);
+	int listPresets(const SoapArgs& sc, SoapData& data);
+	int selectPreset(const SoapArgs& sc, SoapData& data);
+	int getVolumeDBRange(const SoapArgs& sc, SoapData& data);
+    virtual bool getEventData(std::vector<std::string>& names, 
+                              std::vector<std::string>& values);
+	
+private:
+	void doNotifyEvent();
+	MPDCli *m_mpdcli;
+};
+
+
+UpMpd::UpMpd(const string& deviceid, MPDCli *mpdcli)
+	: UpnpDevice(deviceid), m_mpdcli(mpdcli)
+{
+	addServiceType("urn:upnp-org:serviceId:RenderingControl",
+				   "urn:schemas-upnp-org:service:RenderingControl:1");
+
+	{
+		auto bound = bind(&UpMpd::setMute, this, _1, _2);
+		addActionMapping("SetMute", bound);
+	}
+	{
+		auto bound = bind(&UpMpd::getMute, this, _1, _2);
+		addActionMapping("GetMute", bound);
+	}
+	{
+		auto bound = bind(&UpMpd::setVolume, this, _1, _2, false);
+		addActionMapping("SetVolume", bound);
+	}
+	{
+		auto bound = bind(&UpMpd::setVolume, this, _1, _2, true);
+		addActionMapping("SetVolumeDB", bound);
+	}
+	{
+		auto bound = bind(&UpMpd::getVolume, this, _1, _2, false);
+		addActionMapping("GetVolume", bound);
+	}
+	{
+		auto bound = bind(&UpMpd::getVolume, this, _1, _2, true);
+		addActionMapping("GetVolumeDB", bound);
+	}
+	{
+		auto bound = bind(&UpMpd::listPresets, this, _1, _2);
+		addActionMapping("ListPresets", bound);
+	}
+	{
+		auto bound = bind(&UpMpd::selectPreset, this, _1, _2);
+		addActionMapping("SelectPreset", bound);
+	}
+	{
+		auto bound = bind(&UpMpd::getVolumeDBRange, this, _1, _2);
+		addActionMapping("GetVolumeDBRange", bound);
+	}
+}
+
+// LastChange contains all the variables that were changed since the last
+// event. For us that's at most Mute, Volume, VolumeDB
+// <Event xmlns=”urn:schemas-upnp-org:metadata-1-0/AVT_RCS">
+//   <InstanceID val=”0”>
+//     <Mute channel=”Master” val=”0”/>
+//     <Volume channel=”Master” val=”24”/>
+//     <VolumeDB channel=”Master” val=”24”/>
+//   </InstanceID>
+// </Event>
+bool UpMpd::getEventData(std::vector<std::string>& names, 
+						 std::vector<std::string>& values)
+{
+	names.push_back("LastChange");
+	int volume = m_mpdcli->getVolume();
+	char cvalue[40];
+	string 
+		chgdata("<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT_RCS\">\n"
+				"<InstanceID val=\"0\">\n"
+				"<Mute channel=\"Master\" val=\"");
+    chgdata += volume == 0 ? "1" : "0";
+	chgdata += "\"/>\n<Volume channel=\"Master\" val=\"";
+	sprintf(cvalue, "%d", volume);
+	chgdata += cvalue;
+	chgdata += "\"/>\n<VolumeDB channel=\"Master\" val=\"";
+	sprintf(cvalue, "%d", percentodbvalue(volume));
+	chgdata += cvalue;
+	chgdata += "\"/>\n</InstanceID>\n</Event>";
+	values.push_back(chgdata);
+	cerr << "UpMpd::getEventData: " << chgdata << endl;
+	return true;
+}
+	
+void UpMpd::doNotifyEvent()
+{
+	std::vector<std::string> names;
+	std::vector<std::string> values;
+	getEventData(names, values);
+	notifyEvent("urn:upnp-org:serviceId:RenderingControl", names, values);
+}
+
+int UpMpd::getVolumeDBRange(const SoapArgs& sc, SoapData& data)
+{
+	map<string, string>::const_iterator it;
+
+	it = sc.args.find("Channel");
+	if (it == sc.args.end() || it->second.compare("Master")) {
+		return UPNP_E_INVALID_PARAM;
+	}
+	data.data.push_back(pair<string,string>("MinValue", "-10240"));
+	data.data.push_back(pair<string,string>("MaxValue", "0"));
+
+	return UPNP_E_SUCCESS;
+}
+
+int UpMpd::setMute(const SoapArgs& sc, SoapData& data)
+{
+	map<string, string>::const_iterator it;
+
+	it = sc.args.find("Channel");
+	if (it == sc.args.end() || it->second.compare("Master")) {
+		return UPNP_E_INVALID_PARAM;
+	}
+		
+	it = sc.args.find("DesiredMute");
 	if (it == sc.args.end() || it->second.empty()) {
 		return UPNP_E_INVALID_PARAM;
 	}
-	if (it->second[0] == 'F') {
+	if (it->second[0] == 'F' || it->second[0] == '0') {
 		// Relative set of 0 -> restore pre-mute
-		mpdcli->setVolume(0, 1);
-	} else if (it->second[0] == 'T') {
-		mpdcli->setVolume(0);
+		m_mpdcli->setVolume(0, 1);
+	} else if (it->second[0] == 'T' || it->second[0] == '1') {
+		m_mpdcli->setVolume(0);
 	} else {
 		return UPNP_E_INVALID_PARAM;
 	}
+	doNotifyEvent();
+	return UPNP_E_SUCCESS;
 }
 
-static PTMutexInit cblock;
-static int cluCallBack(Upnp_EventType et, void* evp, void* token)
+int UpMpd::getMute(const SoapArgs& sc, SoapData& data)
 {
-	PTMutexLocker lock(cblock);
-	MPDCli *mpdcli = (MPDCli*)token;
+	map<string, string>::const_iterator it;
 
-	cerr << "cluCallBack: evt type:" << 
-		LibUPnP::evTypeAsString(et).c_str() << endl;
-
-	switch (et) {
-	case UPNP_CONTROL_ACTION_REQUEST:
-	{
-		struct Upnp_Action_Request *act = (struct Upnp_Action_Request *)evp;
-		cerr << "UPNP_CONTROL_ACTION_REQUEST: " << act->ActionName <<
-			" Params: " << ixmlPrintDocument(act->ActionRequest) << endl;
-		SoapCall sc;
-		if (!decodeSoap(act->ActionName, act->ActionRequest, &sc)) {
-			return UPNP_E_INVALID_PARAM;
-		}
-		map<string, soapfun>::iterator it = soapcalls.find(sc.name);
-		if (it != soapcalls.end())
-			return it->second(sc, mpdcli);
-		else
-			return UPNP_E_INVALID_PARAM;
+	it = sc.args.find("Channel");
+	if (it == sc.args.end() || it->second.compare("Master")) {
+		return UPNP_E_INVALID_PARAM;
 	}
-	break;
-	case UPNP_CONTROL_GET_VAR_REQUEST:
-	{
-		struct Upnp_State_Var_Request *act = 
-			(struct Upnp_State_Var_Request *)evp;
-		cerr << "UPNP_CONTROL_ACTION_REQUEST: " << act->StateVarName << endl;
-	}
-	break;
-	case UPNP_EVENT_SUBSCRIPTION_REQUEST:
-	{
-		struct Upnp_Subscription_Request *act = 
-			(struct  Upnp_Subscription_Request*)evp;
-	}
-	break;
-	default:
-		// Ignore other events for now
-		break;
-	}
-
-	return UPNP_E_INVALID_PARAM;
+	int volume = m_mpdcli->getVolume();
+	data.data.push_back(pair<string,string>("CurrentMute", 
+											volume == 0 ? "1" : "0"));
+	return UPNP_E_SUCCESS;
 }
 
+int UpMpd::setVolume(const SoapArgs& sc, SoapData& data, bool isDb)
+{
+	map<string, string>::const_iterator it;
 
+	it = sc.args.find("Channel");
+	if (it == sc.args.end() || it->second.compare("Master")) {
+		return UPNP_E_INVALID_PARAM;
+	}
+		
+	it = sc.args.find("DesiredVolume");
+	if (it == sc.args.end() || it->second.empty()) {
+		return UPNP_E_INVALID_PARAM;
+	}
+	int volume = atoi(it->second.c_str());
+	if (isDb) {
+		volume = dbvaluetopercent(volume);
+	} 
+	if (volume < 0 || volume > 100) {
+		return UPNP_E_INVALID_PARAM;
+	}
+	m_mpdcli->setVolume(volume);
+	doNotifyEvent();
+	return UPNP_E_SUCCESS;
+}
+
+int UpMpd::getVolume(const SoapArgs& sc, SoapData& data, bool isDb)
+{
+	map<string, string>::const_iterator it;
+
+	it = sc.args.find("Channel");
+	if (it == sc.args.end() || it->second.compare("Master")) {
+		return UPNP_E_INVALID_PARAM;
+	}
+		
+	int volume = m_mpdcli->getVolume();
+	if (isDb) {
+		volume = percentodbvalue(volume);
+	}
+	char svolume[30];
+	sprintf(svolume, "%d", volume);
+	data.data.push_back(pair<string,string>("CurrentVolume", svolume));
+	return UPNP_E_SUCCESS;
+}
+
+int UpMpd::listPresets(const SoapArgs& sc, SoapData& data)
+{
+	map<string, string>::const_iterator it;
+
+	// The 2nd arg is a comma-separated list of preset names
+	data.data.push_back(pair<string,string>("CurrentPresetNameList",
+											"FactoryDefaults"));
+	return UPNP_E_SUCCESS;
+}
+
+int UpMpd::selectPreset(const SoapArgs& sc, SoapData& data)
+{
+	map<string, string>::const_iterator it;
+		
+	it = sc.args.find("PresetName");
+	if (it == sc.args.end() || it->second.empty()) {
+		return UPNP_E_INVALID_PARAM;
+	}
+	if (it->second.compare("FactoryDefaults")) {
+		return UPNP_E_INVALID_PARAM;
+	}
+
+	// Well there is only the volume actually...
+	m_mpdcli->setVolume(50);
+
+	doNotifyEvent();
+	return UPNP_E_SUCCESS;
+}
 
 static char *thisprog;
 static char usage [] =
@@ -455,8 +586,6 @@ int main(int argc, char *argv[])
 	if (argc != 0)
 		Usage();
 
-	soapcalls["SetMute"] = setMute;
-
 	LibUPnP *mylib = LibUPnP::getLibUPnP(true);
 	if (!mylib) {
 		cerr << " Can't get LibUPnP" << endl;
@@ -469,23 +598,23 @@ int main(int argc, char *argv[])
 	}
 	mylib->setLogFileName("/tmp/clilibupnp.log");
 
-	MPDCli mpdcli("rasp1.dockes.com");
+	MPDCli mpdcli("hm1.dockes.com");
 	if (!mpdcli.ok()) {
 		cerr << "MPD connection failed" << endl;
 		return 1;
 	}
-	mylib->registerHandler(UPNP_CONTROL_ACTION_REQUEST, cluCallBack, &mpdcli);
-	mylib->registerHandler(UPNP_CONTROL_GET_VAR_REQUEST, cluCallBack, &mpdcli);
-	mylib->registerHandler(UPNP_EVENT_SUBSCRIPTION_REQUEST, cluCallBack, &mpdcli);
 
 	myDeviceUUID = LibUPnP::makeDevUUID(friendlyName);
-	string description = deviceDescription1 + myDeviceUUID + deviceDescription2;
-	cerr << myDeviceUUID << endl;
+	cerr << "Generated UUID: [" << myDeviceUUID << "]" << endl;
+
+	UpMpd device(string("uuid:") + myDeviceUUID, &mpdcli);
+
 	VirtualDir* theVD = VirtualDir::getVirtualDir();
 	if (theVD == 0) {
 		cerr << "Can't get VirtualDir" << endl;
 		return 1;
 	}
+	string description = deviceDescription1 + myDeviceUUID + deviceDescription2;
 	theVD->addFile("/", "description.xml", description, "application/xml");
 	theVD->addFile("/", "RenderingControl.xml", scdp, "application/xml");
 
