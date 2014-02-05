@@ -88,8 +88,6 @@ LibUPnP::LibUPnP(bool server)
 
 int LibUPnP::setupWebServer(const string& description)
 {
-	//static const string description("/tmp/description.xml");
-	//m_init_error = UpnpSetWebServerRootDir("/tmp/root");
 	int res = UpnpRegisterRootDevice2(
 		UPNPREG_BUF_DESC,
 		description.c_str(), 

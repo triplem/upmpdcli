@@ -23,6 +23,9 @@ upexplorer_SOURCES = upexplo/upexplo.cxx
 upexplorer_LDADD = libupnpp.la -lixml -lupnp -lexpat -lpthread 
 #upexplorer_LDFLAGS = 
 
-upmpdcli_SOURCES = upmpd/upmpd.cxx upmpd/mpdcli.cxx
+upmpdcli_SOURCES = upmpd/upmpd.cxx upmpd/mpdcli.cxx upmpd/upmpdutils.cxx
 upmpdcli_LDADD = libupnpp.la -lixml -lupnp -lexpat -lmpdclient -lpthread 
 #upmpdcli_LDFLAGS = 
+
+dist_pkgdata_DATA = upmpd/description.xml
+

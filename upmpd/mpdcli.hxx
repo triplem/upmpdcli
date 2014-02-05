@@ -17,7 +17,9 @@
 #ifndef _MPDCLI_H_X_INCLUDED_
 #define _MPDCLI_H_X_INCLUDED_
 
+#include <unordered_map>
 #include <string>
+#include <map>
 
 struct MpdStatus {
     enum State {MPDS_UNK, MPDS_STOP, MPDS_PLAY, MPDS_PAUSE};
@@ -34,25 +36,36 @@ struct MpdStatus {
     float mixrampdelay;
     int songpos;
     int songid;
-    unsigned int songms; //current ms
-    unsigned int songlen; // seconds
+    unsigned int songelapsedms; //current ms
+    unsigned int songlenms; // song millis
     unsigned int kbrate;
     std::string errormessage;
+    // Current song info. The keys are didl-lite names (which can be
+    // attribute or element names
+    std::map<std::string, std::string> currentsong;
 };
 
 class MPDCli {
 public:
-    MPDCli(const std::string& host, int port = 6600, const std::string& pass="");
+    MPDCli(const std::string& host, int port = 6600, 
+           const std::string& pass="");
     ~MPDCli();
     bool ok() {return m_ok;}
     bool setVolume(int ivol, bool relative = false);
     int  getVolume();
+    const struct MpdStatus& getStatus()
+    {
+        updStatus();
+        return m_stat;
+    }
+
 private:
     void *m_conn;
     bool m_ok;
     MpdStatus m_stat;
     int m_premutevolume;
     bool updStatus();
+    bool updSong();
 };
 
 

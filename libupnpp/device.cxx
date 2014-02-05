@@ -18,6 +18,7 @@
 using namespace std;
 
 #include "upnpplib.hxx"
+#include "vdir.hxx"
 #include "device.hxx"
 
 unordered_map<std::string, UpnpDevice *> UpnpDevice::o_devices;
@@ -37,7 +38,8 @@ static string xmlquote(const string& in)
     return out;
 }
 
-UpnpDevice::UpnpDevice(const string& deviceId)
+UpnpDevice::UpnpDevice(const string& deviceId, 
+                       const unordered_map<string, string>& xmlfiles)
     : m_deviceId(deviceId)
 {
     cerr << "UpnpDevice::UpnpDevice(" << m_deviceId << ")" << endl;
@@ -61,10 +63,33 @@ UpnpDevice::UpnpDevice(const string& deviceId)
 	m_lib->registerHandler(UPNP_EVENT_SUBSCRIPTION_REQUEST, sCallBack,this);
     }
 
-    cerr << "UpnpDevice::UpnpDevice: adding myself[" << this << "] to dev table" << endl;
+    VirtualDir* theVD = VirtualDir::getVirtualDir();
+    if (theVD == 0) {
+        cerr << "UpnpDevice::UpnpDevice: can't get VirtualDir" << endl;
+        return;
+    }
+
+    unordered_map<string,string>::const_iterator it = 
+        xmlfiles.find("description.xml");
+    if (it == xmlfiles.end()) {
+        cerr << "UpnpDevice::UpnpDevice: no description.xml found in xmlfiles"
+             << endl;
+        return;
+    } 
+
+    const string& description = it->second;
+
+    for (it = xmlfiles.begin(); it != xmlfiles.end(); it++) {
+        theVD->addFile("/", it->first, it->second, "application/xml");
+    }
+
+    // Start up the web server for sending out description files
+    m_lib->setupWebServer(description);
+
     o_devices[m_deviceId] = this;
 }
 
+// Main libupnp callback: use the device id and call the right device
 int UpnpDevice::sCallBack(Upnp_EventType et, void* evp, void* tok)
 {
     cerr << "UpnpDevice::sCallBack" << endl;

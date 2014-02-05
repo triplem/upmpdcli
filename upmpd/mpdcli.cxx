@@ -22,6 +22,9 @@
 #include <mpd/password.h>
 #include <mpd/mixer.h>
 #include <mpd/status.h>
+#include <mpd/song.h>
+#include <mpd/tag.h>
+#include <mpd/player.h>
 
 #include "mpdcli.hxx"
 
@@ -90,7 +93,7 @@ bool MPDCli::setVolume(int volume, bool relative)
             mpd_connection_get_error_message(M_CONN) << endl;
         return false;
     }
-    return true;
+    return updStatus();
 }
 
 int MPDCli::getVolume()
@@ -128,18 +131,65 @@ bool MPDCli::updStatus()
     case MPD_STATE_PLAY: m_stat.state = MpdStatus::MPDS_PLAY;break;
     case MPD_STATE_PAUSE: m_stat.state = MpdStatus::MPDS_PAUSE;break;
     }
+
+    m_stat.currentsong.clear();
+    if (m_stat.state == MpdStatus::MPDS_PAUSE ||
+        m_stat.state == MpdStatus::MPDS_PLAY) {
+        updSong();
+    }
+
     m_stat.crossfade = mpd_status_get_crossfade(mpds);
     m_stat.mixrampdb = mpd_status_get_mixrampdb(mpds);
     m_stat.mixrampdelay = mpd_status_get_mixrampdelay(mpds);
     m_stat.songpos = mpd_status_get_song_pos(mpds);
     m_stat.songid = mpd_status_get_song_id(mpds);
-    m_stat.songms = mpd_status_get_elapsed_ms(mpds);
-    m_stat.songlen = mpd_status_get_total_time(mpds);
+    m_stat.songelapsedms = mpd_status_get_elapsed_ms(mpds);
+    m_stat.songlenms = mpd_status_get_total_time(mpds) * 1000;
     m_stat.kbrate = mpd_status_get_kbit_rate(mpds);
+
     const char *err = mpd_status_get_error(mpds);
     if (err != 0)
         m_stat.errormessage = err;
 
     mpd_status_free(mpds);
+    return true;
+}
+
+bool MPDCli::updSong()
+{
+    cerr << "MPDCli::updSong" << endl;
+    struct mpd_song *song = mpd_run_current_song(M_CONN);
+    if (song == 0) {
+        cerr << "mpd_run_current_song failed" << endl;
+        return false;
+    }
+
+    const char *cp;
+
+    cp = mpd_song_get_tag(song, MPD_TAG_ARTIST, 0);
+    if (cp != 0)
+        m_stat.currentsong["upnp:artist"] = cp;
+
+    cp = mpd_song_get_tag(song, MPD_TAG_ALBUM, 0);
+    if (cp != 0)
+        m_stat.currentsong["upnp:album"] = cp;
+
+    cp = mpd_song_get_tag(song, MPD_TAG_TITLE, 0);
+    if (cp != 0) {
+        m_stat.currentsong["dc:title"] = cp;
+        cerr << "Title: " << cp << endl;
+    }
+
+    cp = mpd_song_get_tag(song, MPD_TAG_TRACK, 0);
+    if (cp != 0)
+        m_stat.currentsong["upnp:originalTrackNumber"] = cp;
+
+    cp = mpd_song_get_tag(song, MPD_TAG_GENRE, 0);
+    if (cp != 0)
+        m_stat.currentsong["upnp:genre"] = cp;
+    
+    cp = mpd_song_get_uri(song);
+    if (cp != 0)
+        m_stat.currentsong["uri"] = cp;
     return true;
 }

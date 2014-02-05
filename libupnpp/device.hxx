@@ -20,7 +20,6 @@
 #include <unordered_map>
 #include <functional>
 
-
 #include "soaphelp.hxx"
 
 class UpnpDevice;
@@ -34,7 +33,8 @@ typedef function<int (const SoapArgs&, SoapData&)> soapfun;
  */
 class UpnpDevice {
 public:
-    UpnpDevice(const std::string& deviceId);
+    UpnpDevice(const std::string& deviceId, 
+               const std::unordered_map<std::string, std::string>& xmlfiles);
     void addServiceType(const std::string& serviceId, 
                         const std::string& serviceType);
     void addActionMapping(const std::string& actName, soapfun fun);

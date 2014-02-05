@@ -15,328 +15,42 @@
  *	 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
-////////////////////// libupnpp UPnP explorer test program
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 
 #include <string>
 #include <iostream>
+#include <sstream>
 #include <vector>
 #include <functional>
+//#include <regex>
 
 using namespace std;
 using namespace std::placeholders;
 
 #include "libupnpp/upnpplib.hxx"
-#include "libupnpp/vdir.hxx"
 #include "libupnpp/soaphelp.hxx"
 #include "libupnpp/device.hxx"
 
 #include "mpdcli.hxx"
+#include "upmpdutils.hxx"
 
 static const string friendlyName("UpMpd");
-static const string deviceDescription1 = 
-"<?xml version=\"1.0\"?>\n"
-"<root xmlns=\"urn:schemas-upnp-org:device-1-0\">\n"
-"  <specVersion>\n"
-"    <major>1</major>\n"
-"    <minor>0</minor>\n"
-"  </specVersion>\n"
-"  <device>\n"
-"    <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>\n"
-"    <friendlyName>UpMPD</friendlyName>\n"
-"    <manufacturer>JF Light Industries</manufacturer>\n"
-"    <manufacturerURL>http://www.github.com/medoc92/upmpd</manufacturerURL>\n"
-"    <modelDescription>UPnP front-end to MPD</modelDescription>\n"
-"    <modelName>UpMPD</modelName>\n"
-"    <modelNumber>1.0</modelNumber>\n"
-"    <modelURL>http://www.github.com/medoc92/upmpd</modelURL>\n"
-"    <serialNumber>72</serialNumber>\n"
-"    <UDN>uuid:"
-	;
-static const string deviceDescription2 = 
-"</UDN>\n"
-"    <serviceList>\n"
-"      <service>\n"
-"        <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>\n"
-"        <serviceId>urn:upnp-org:serviceId:RenderingControl</serviceId>\n"
-"        <SCPDURL>/RenderingControl.xml</SCPDURL>\n"
-"        <controlURL>/ctl/RenderingControl</controlURL>\n"
-"        <eventSubURL>/evt/RenderingControl</eventSubURL>\n"
-"      </service>\n"
-"    </serviceList>\n"
-"    <presentationURL>/presentation.html</presentationURL>\n"
-"  </device>\n"
-"</root>\n"
-;
 
-string scdp = 
-"<?xml version=\"1.0\"?>\n"
-"<scpd xmlns=\"urn:schemas-upnp-org:service-1-0\">\n"
-"  <specVersion>\n"
-"    <major>1</major>\n"
-"    <minor>0</minor>\n"
-"  </specVersion>\n"
-"  <actionList>\n"
-"    <action>\n"
-"      <name>ListPresets</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>CurrentPresetNameList</name>\n"
-"          <direction>out</direction>\n"
-"          <relatedStateVariable>PresetNameList</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"    <action>\n"
-"      <name>SelectPreset</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>PresetName</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_PresetName</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"    <action>\n"
-"      <name>GetMute</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>Channel</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>CurrentMute</name>\n"
-"          <direction>out</direction>\n"
-"          <relatedStateVariable>Mute</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"    <action>\n"
-"      <name>SetMute</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>Channel</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>DesiredMute</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>Mute</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"    <action>\n"
-"      <name>GetVolume</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>Channel</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>CurrentVolume</name>\n"
-"          <direction>out</direction>\n"
-"          <relatedStateVariable>Volume</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"    <action>\n"
-"      <name>SetVolume</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>Channel</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>DesiredVolume</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>Volume</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"    <action>\n"
-"      <name>GetVolumeDB</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>Channel</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>CurrentVolume</name>\n"
-"          <direction>out</direction>\n"
-"          <relatedStateVariable>VolumeDB</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"    <action>\n"
-"      <name>SetVolumeDB</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>Channel</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>DesiredVolume</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>VolumeDB</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"    <action>\n"
-"      <name>GetVolumeDBRange</name>\n"
-"      <argumentList>\n"
-"        <argument>\n"
-"          <name>InstanceID</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>Channel</name>\n"
-"          <direction>in</direction>\n"
-"          <relatedStateVariable>A_ARG_TYPE_Channel</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>MinValue</name>\n"
-"          <direction>out</direction>\n"
-"          <relatedStateVariable>VolumeDB</relatedStateVariable>\n"
-"        </argument>\n"
-"        <argument>\n"
-"          <name>MaxValue</name>\n"
-"          <direction>out</direction>\n"
-"          <relatedStateVariable>VolumeDB</relatedStateVariable>\n"
-"        </argument>\n"
-"      </argumentList>\n"
-"    </action>\n"
-"  </actionList>\n"
-"  <serviceStateTable>\n"
-"    <stateVariable sendEvents=\"no\">\n"
-"      <name>PresetNameList</name>\n"
-"      <dataType>string</dataType>\n"
-"    </stateVariable>\n"
-"    <stateVariable sendEvents=\"yes\">\n"
-"      <name>LastChange</name>\n"
-"      <dataType>string</dataType>\n"
-"    </stateVariable>\n"
-"    <stateVariable sendEvents=\"no\">\n"
-"      <name>Mute</name>\n"
-"      <dataType>boolean</dataType>\n"
-"    </stateVariable>\n"
-"    <stateVariable sendEvents=\"no\">\n"
-"      <name>Volume</name>\n"
-"      <dataType>ui2</dataType>\n"
-"      <allowedValueRange>\n"
-"        <minimum>0</minimum>\n"
-"        <maximum>100</maximum>\n"
-"        <step>1</step>\n"
-"      </allowedValueRange>\n"
-"    </stateVariable>\n"
-"    <stateVariable sendEvents=\"no\">\n"
-"      <name>VolumeDB</name>\n"
-"      <dataType>i2</dataType>\n"
-"      <allowedValueRange>\n"
-"        <minimum>-10240</minimum>\n"
-"        <maximum>0</maximum>\n"
-"        <step>1</step>\n"
-"      </allowedValueRange>\n"
-"    </stateVariable>\n"
-"    <stateVariable sendEvents=\"no\">\n"
-"      <name>A_ARG_TYPE_Channel</name>\n"
-"      <dataType>string</dataType>\n"
-"      <allowedValueList>\n"
-"        <allowedValue>Master</allowedValue>\n"
-"      </allowedValueList>\n"
-"    </stateVariable>\n"
-"    <stateVariable sendEvents=\"no\">\n"
-"      <name>A_ARG_TYPE_InstanceID</name>\n"
-"      <dataType>ui4</dataType>\n"
-"    </stateVariable>\n"
-"    <stateVariable sendEvents=\"no\">\n"
-"      <name>A_ARG_TYPE_PresetName</name>\n"
-"      <dataType>string</dataType>\n"
-"      <allowedValueList>\n"
-"        <allowedValue>FactoryDefaults</allowedValue>\n"
-"      </allowedValueList>\n"
-"    </stateVariable>\n"
-"  </serviceStateTable>\n"
-"</scpd>\n"
-;
+static const string deviceDescription;
 
-// We do db upnp-encoded values from -10240 (0%) to 0 (100%)
-static int percentodbvalue(int value)
-{
-    int dbvalue;
-    if (value == 0) {
-        dbvalue = -10240;
-    } else {
-        float ratio = float(value)*value / 10000.0;
-        float db = 10 * log10(ratio);
-        dbvalue = int(256 * db);
-    }
-    return dbvalue;
-}
+string rdc_scdp;
 
-static int dbvaluetopercent(int dbvalue)
-{
-    float db = float(dbvalue) / 256.0;
-    float vol = exp10(db/10);
-    int percent = floor(sqrt(vol * 10000.0));
-	if (percent < 0)	percent = 0;
-	if (percent > 100)	percent = 100;
-    return percent;
-}
+string avt_scdp;
+
 
 class UpMpd : public UpnpDevice {
 public:
-	UpMpd(const string& deviceid, MPDCli *mpdcli);
+	UpMpd(const string& deviceid, 
+		  const unordered_map<string, string>& xmlfiles,
+		  MPDCli *mpdcli);
 
+	// RenderingControl
 	int setMute(const SoapArgs& sc, SoapData& data);
 	int getMute(const SoapArgs& sc, SoapData& data);
 	int setVolume(const SoapArgs& sc, SoapData& data, bool isDb);
@@ -344,6 +58,12 @@ public:
 	int listPresets(const SoapArgs& sc, SoapData& data);
 	int selectPreset(const SoapArgs& sc, SoapData& data);
 	int getVolumeDBRange(const SoapArgs& sc, SoapData& data);
+
+	// AVTransport
+	int setAVTransportURI(const SoapArgs& sc, SoapData& data);
+	int getPositionInfo(const SoapArgs& sc, SoapData& data);
+
+	// Shared
     virtual bool getEventData(std::vector<std::string>& names, 
                               std::vector<std::string>& values);
 	
@@ -353,50 +73,54 @@ private:
 };
 
 
-UpMpd::UpMpd(const string& deviceid, MPDCli *mpdcli)
-	: UpnpDevice(deviceid), m_mpdcli(mpdcli)
+UpMpd::UpMpd(const string& deviceid, 
+			 const unordered_map<string, string>& xmlfiles,
+			 MPDCli *mpdcli)
+	: UpnpDevice(deviceid, xmlfiles), m_mpdcli(mpdcli)
 {
 	addServiceType("urn:upnp-org:serviceId:RenderingControl",
 				   "urn:schemas-upnp-org:service:RenderingControl:1");
-
-	{
-		auto bound = bind(&UpMpd::setMute, this, _1, _2);
+	{	auto bound = bind(&UpMpd::setMute, this, _1, _2);
 		addActionMapping("SetMute", bound);
 	}
-	{
-		auto bound = bind(&UpMpd::getMute, this, _1, _2);
+	{	auto bound = bind(&UpMpd::getMute, this, _1, _2);
 		addActionMapping("GetMute", bound);
 	}
-	{
-		auto bound = bind(&UpMpd::setVolume, this, _1, _2, false);
+	{	auto bound = bind(&UpMpd::setVolume, this, _1, _2, false);
 		addActionMapping("SetVolume", bound);
 	}
-	{
-		auto bound = bind(&UpMpd::setVolume, this, _1, _2, true);
+	{	auto bound = bind(&UpMpd::setVolume, this, _1, _2, true);
 		addActionMapping("SetVolumeDB", bound);
 	}
-	{
-		auto bound = bind(&UpMpd::getVolume, this, _1, _2, false);
+	{	auto bound = bind(&UpMpd::getVolume, this, _1, _2, false);
 		addActionMapping("GetVolume", bound);
 	}
-	{
-		auto bound = bind(&UpMpd::getVolume, this, _1, _2, true);
+	{	auto bound = bind(&UpMpd::getVolume, this, _1, _2, true);
 		addActionMapping("GetVolumeDB", bound);
 	}
-	{
-		auto bound = bind(&UpMpd::listPresets, this, _1, _2);
+	{	auto bound = bind(&UpMpd::listPresets, this, _1, _2);
 		addActionMapping("ListPresets", bound);
 	}
-	{
-		auto bound = bind(&UpMpd::selectPreset, this, _1, _2);
+	{	auto bound = bind(&UpMpd::selectPreset, this, _1, _2);
 		addActionMapping("SelectPreset", bound);
 	}
-	{
-		auto bound = bind(&UpMpd::getVolumeDBRange, this, _1, _2);
+	{	auto bound = bind(&UpMpd::getVolumeDBRange, this, _1, _2);
 		addActionMapping("GetVolumeDBRange", bound);
+	}
+
+	addServiceType("urn:upnp-org:serviceId:AVTransport",
+				   "urn:schemas-upnp-org:service:AVTransport:1");
+
+	{	auto bound = bind(&UpMpd::setAVTransportURI, this, _1, _2);
+		addActionMapping("SetAVTransportURI", bound);
+	}
+	{	auto bound = bind(&UpMpd::getPositionInfo, this, _1, _2);
+		addActionMapping("GetPositionInfo", bound);
 	}
 }
 
+
+///////// TOBEDONE: this needs a serviceid parameter
 // LastChange contains all the variables that were changed since the last
 // event. For us that's at most Mute, Volume, VolumeDB
 // <Event xmlns=”urn:schemas-upnp-org:metadata-1-0/AVT_RCS">
@@ -428,7 +152,10 @@ bool UpMpd::getEventData(std::vector<std::string>& names,
 	cerr << "UpMpd::getEventData: " << chgdata << endl;
 	return true;
 }
-	
+
+////////////////////////////////////////////////////
+/// RenderingControl methods
+
 void UpMpd::doNotifyEvent()
 {
 	std::vector<std::string> names;
@@ -563,6 +290,95 @@ int UpMpd::selectPreset(const SoapArgs& sc, SoapData& data)
 	return UPNP_E_SUCCESS;
 }
 
+///////////////// AVTransport methods
+
+int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data)
+{
+	map<string, string>::const_iterator it;
+		
+	it = sc.args.find("CurrentURI");
+	if (it == sc.args.end() || it->second.empty()) {
+		return UPNP_E_INVALID_PARAM;
+	}
+	string uri = it->second;
+	string metadata;
+	it = sc.args.find("CurrentURIMetaData");
+	if (it != sc.args.end())
+		metadata = it->second;
+	return UPNP_E_SUCCESS;
+}
+
+// Note: we need to return all out arguments defined by the SOAP call even if
+// they don't make sense (because there is no song playing). Ref upnp arch p.51:
+//
+//   argumentName: Required if and only if action has out
+//   arguments. Value returned from action. Repeat once for each out
+//   argument. If action has an argument marked as retval, this
+//   argument must be the first element. (Element name not qualified
+//   by a namespace; element nesting context is sufficient.) Case
+//   sensitive. Single data type as defined by UPnP service
+//   description. Every “out” argument in the definition of the action
+//   in the service description must be included, in the same order as
+//   specified in the service description (SCPD) available from the
+//   device.
+
+int UpMpd::getPositionInfo(const SoapArgs& sc, SoapData& data)
+{
+	const struct MpdStatus &mpds = m_mpdcli->getStatus();
+	cerr << "UpMpd::getPositionInfo. State: " << mpds.state << endl;
+
+	bool is_song = (mpds.state == MpdStatus::MPDS_PLAY) || 
+		(mpds.state == MpdStatus::MPDS_PAUSE);
+
+	if (is_song) {
+		data.data.push_back(pair<string,string>("Track", "1"));
+	} else {
+		data.data.push_back(pair<string,string>("Track", "0"));
+	}
+
+	if (is_song) {
+		data.data.push_back(pair<string,string>("TrackDuration", 
+												upnpduration(mpds.songlenms)));
+	} else {
+		data.data.push_back(pair<string,string>("Track", "0"));
+	}
+
+	if (is_song) {
+		data.data.push_back(pair<string,string>("TrackMetaData", 
+												didlmake(mpds)));
+	} else {
+		data.data.push_back(pair<string,string>("TrackMetaData", ""));
+	}
+
+	cerr << "before find" << endl;
+	map<string, string>::const_iterator it = 
+		mpds.currentsong.find("uri");
+//	unordered_map<string, string>::const_iterator it = mpds.currentsong.end();
+	cerr << "after find" << endl;
+	if (is_song && it != mpds.currentsong.end()) {
+		data.data.push_back(pair<string,string>("TrackURI", it->second));
+	} else {
+		data.data.push_back(pair<string,string>("TrackURI", ""));
+	}
+	if (is_song) {
+		data.data.push_back(pair<string,string>("RelTime", 
+											upnpduration(mpds.songelapsedms)));
+	} else {
+		data.data.push_back(pair<string,string>("RelTime", "0:00:00"));
+	}
+
+	if (is_song) {
+		data.data.push_back(pair<string,string>("AbsTime", 
+											upnpduration(mpds.songelapsedms)));
+	} else {
+		data.data.push_back(pair<string,string>("AbsTime", "0:00:00"));
+	}
+
+	data.data.push_back(pair<string,string>("RelCount", "0"));
+	data.data.push_back(pair<string,string>("AbsCount", "0"));
+	return UPNP_E_SUCCESS;
+}
+
 static char *thisprog;
 static char usage [] =
 			"  \n\n"
@@ -578,6 +394,7 @@ static int	   op_flags;
 
 static string myDeviceUUID;
 
+static string datadir("upmpd/");
 int main(int argc, char *argv[])
 {
 	thisprog = argv[0];
@@ -586,6 +403,7 @@ int main(int argc, char *argv[])
 	if (argc != 0)
 		Usage();
 
+	// Initialize libupnpp, and check health
 	LibUPnP *mylib = LibUPnP::getLibUPnP(true);
 	if (!mylib) {
 		cerr << " Can't get LibUPnP" << endl;
@@ -598,32 +416,57 @@ int main(int argc, char *argv[])
 	}
 	mylib->setLogFileName("/tmp/clilibupnp.log");
 
+	// Initialize MPD client module
 	MPDCli mpdcli("hm1.dockes.com");
 	if (!mpdcli.ok()) {
 		cerr << "MPD connection failed" << endl;
 		return 1;
 	}
+	
+	// Create unique ID
+	string UUID = LibUPnP::makeDevUUID(friendlyName);
 
-	myDeviceUUID = LibUPnP::makeDevUUID(friendlyName);
-	cerr << "Generated UUID: [" << myDeviceUUID << "]" << endl;
+	// Read our XML data.
+	
+	string reason;
 
-	UpMpd device(string("uuid:") + myDeviceUUID, &mpdcli);
-
-	VirtualDir* theVD = VirtualDir::getVirtualDir();
-	if (theVD == 0) {
-		cerr << "Can't get VirtualDir" << endl;
+	string description;
+	string filename = datadir + "description.xml";
+	if (!file_to_string(filename, description, &reason)) {
+		cerr << "Failed reading " << filename << " : " << reason << endl;
 		return 1;
 	}
-	string description = deviceDescription1 + myDeviceUUID + deviceDescription2;
-	theVD->addFile("/", "description.xml", description, "application/xml");
-	theVD->addFile("/", "RenderingControl.xml", scdp, "application/xml");
+	// Update device description with UUID
+    description = regsub1("@UUID@", description, UUID);
+    cerr << "Description: [" << description << "]" << endl;
 
-	mylib->setupWebServer(description);
+	string rdc_scdp;
+	filename = datadir + "RenderingControl.xml";
+	if (!file_to_string(filename, rdc_scdp, &reason)) {
+		cerr << "Failed reading " << filename << " : " << reason << endl;
+		return 1;
+	}
+	string avt_scdp;
+	filename = datadir + "AVTransport.xml";
+	if (!file_to_string(filename, avt_scdp, &reason)) {
+		cerr << "Failed reading " << filename << " : " << reason << endl;
+		return 1;
+	}
+
+	// List the XML files to be served through http (all will live in '/')
+	unordered_map<string, string> xmlfiles;
+	xmlfiles["description.xml"] = description;
+	xmlfiles["RenderingControl.xml"] = rdc_scdp;
+	xmlfiles["AVTransport.xml"] = avt_scdp;
+
+	// Initialize the UPnP device object.
+
+	UpMpd device(string("uuid:") + UUID, xmlfiles, &mpdcli);
+
 	while (true)
 		sleep(1000);
 	return 0;
 }
-
 
 /* Local Variables: */
 /* mode: c++ */
