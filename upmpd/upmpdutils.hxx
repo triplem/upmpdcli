@@ -18,7 +18,7 @@
 #define _UPMPDUTILS_H_X_INCLUDED_
 
 #include <string>
-#include <map>
+#include <unordered_map>
 
 /**
  * Read file into string.
@@ -41,12 +41,13 @@ extern std::string upnpduration(int ms);
 
 // Return mapvalue or null strings, for maps where absent entry and
 // null data are equivalent
-extern const std::string& mapget(const std::map<std::string, std::string>& im, 
-                                 const std::string& k);
+extern const std::string& mapget(
+    const std::unordered_map<std::string, std::string>& im, 
+    const std::string& k);
 
 // Format a didl fragment from MPD status data
 class MpdStatus;
-extern std::string didlmake(const MpdStatus& mpds);
+extern std::string didlmake(const MpdStatus& mpds, bool next = false);
 
 // Replace the first occurrence of regexp. cxx11 regex does not work
 // that well yet...

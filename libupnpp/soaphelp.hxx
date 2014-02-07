@@ -49,10 +49,14 @@ extern bool decodeSoapBody(const char *name, IXML_Document *actReq,
  * The generic UpnpDevice callback fills up name and service type, the
  * device call only needs to fill the data vector.
  */
-struct SoapData {
+class SoapData {
+public:
     std::string name;
     std::string serviceType;
     std::vector<std::pair<std::string, std::string> > data;
+    void addarg(const std::string& k, const std::string& v) {
+        data.push_back(pair<string,string>(k, v));
+    }
 };
 
 /** Build a SOAP response data XML document from a list of values */

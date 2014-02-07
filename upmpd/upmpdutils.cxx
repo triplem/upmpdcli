@@ -166,10 +166,10 @@ string xmlquote(const string& in)
     return cbuf;
 }
 
-const string& mapget(const map<string, string>& im, const string& k)
+const string& mapget(const unordered_map<string, string>& im, const string& k)
 {
     static string ns;// null string
-    map<string, string>::const_iterator it = im.find(k);
+    unordered_map<string, string>::const_iterator it = im.find(k);
     if (it == im.end())
         return ns;
     else
@@ -178,61 +178,63 @@ const string& mapget(const map<string, string>& im, const string& k)
 
 // Bogus didl fragment maker. We probably don't need a full-blown XML
 // helper here
-string didlmake(const MpdStatus& mpds)
+string didlmake(const MpdStatus& mpds, bool next)
 {
-	ostringstream ss;
-	ss << "<DIDL-Lite xmlns:dc=\"http://purl.org/dc/elements/1.1/\" "
-		"xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\" "
-		"xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" "
-		"xmlns:dlna=\"urn:schemas-dlna-org:metadata-1-0/\">"
-	   << "<item restricted=\"1\">";
+    const unordered_map<string, string>& songmap = 
+        next? mpds.nextsong : mpds.currentsong;
+    ostringstream ss;
+    ss << "<DIDL-Lite xmlns:dc=\"http://purl.org/dc/elements/1.1/\" "
+        "xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\" "
+        "xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" "
+        "xmlns:dlna=\"urn:schemas-dlna-org:metadata-1-0/\">"
+       << "<item restricted=\"1\">";
 
-	{   const string& val = mapget(mpds.currentsong, "dc:title");
-		ss << "<dc:title>" << xmlquote(val) << "</dc:title>";
-	}
+    {   const string& val = mapget(songmap, "dc:title");
+        ss << "<dc:title>" << xmlquote(val) << "</dc:title>";
+    }
 	
-	// TBD Playlists etc?
-	ss << "<upnp:class>object.item.audioItem.musicTrack</upnp:class>";
+    // TBD Playlists etc?
+    ss << "<upnp:class>object.item.audioItem.musicTrack</upnp:class>";
 
-	{   const string& val = mapget(mpds.currentsong, "upnp:artist");
-		if (!val.empty()) {
-			string a = xmlquote(val);
-			ss << "<dc:creator>" << a << "</dc:creator>" << 
-				"<upnp:artist>" << a << "</upnp:artist>";
-		}
-	}
+    {   const string& val = mapget(songmap, "upnp:artist");
+        if (!val.empty()) {
+            string a = xmlquote(val);
+            ss << "<dc:creator>" << a << "</dc:creator>" << 
+                "<upnp:artist>" << a << "</upnp:artist>";
+        }
+    }
 
-	{   const string& val = mapget(mpds.currentsong, "upnp:album");
-		if (!val.empty()) {
-			ss << "<upnp:album>" << xmlquote(val) << "</upnp:album>";
-		}
-	}
+    {   const string& val = mapget(songmap, "upnp:album");
+        if (!val.empty()) {
+            ss << "<upnp:album>" << xmlquote(val) << "</upnp:album>";
+        }
+    }
 
-	{   const string& val = mapget(mpds.currentsong, "upnp:genre");
-		if (!val.empty()) {
-			ss << "<upnp:genre>" << xmlquote(val) << "</upnp:genre>";
-		}
-	}
+    {   const string& val = mapget(songmap, "upnp:genre");
+        if (!val.empty()) {
+            ss << "<upnp:genre>" << xmlquote(val) << "</upnp:genre>";
+        }
+    }
 
-	{const string& val = mapget(mpds.currentsong, "upnp:originalTrackNumber");
-		if (!val.empty()) {
-			ss << "<upnp:originalTrackNumber>" << val << 
-				"</upnp:originalTrackNumber>";
-		}
-	}
+    {const string& val = mapget(songmap, "upnp:originalTrackNumber");
+        if (!val.empty()) {
+            ss << "<upnp:originalTrackNumber>" << val << 
+                "</upnp:originalTrackNumber>";
+        }
+    }
 
-	// TBD: the res element normally has size, sampleFrequency,
-	// nrAudioChannels and protocolInfo attributes, which are bogus
-	// for the moment
-	ss << "<res " << "duration=\"" << upnpduration(mpds.songlenms) << "\" "
-	   << "bitrate=\"" << mpds.kbrate << "\" "
-	   << "sampleFrequency=\"44100\" audioChannels=\"2\" "
-	   << "protocolInfo=\"http-get:*:audio/mpeg:DLNA.ORG_PN=MP3;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000\""
-	   << ">"
-	   << xmlquote(mapget(mpds.currentsong, "uri")) 
-	   << "</res>"
-	   << "</item></DIDL-Lite>";
-	return ss.str();
+    // TBD: the res element normally has size, sampleFrequency,
+    // nrAudioChannels and protocolInfo attributes, which are bogus
+    // for the moment. And mostly everything is bogus if next is set...
+    ss << "<res " << "duration=\"" << upnpduration(mpds.songlenms) << "\" "
+       << "bitrate=\"" << mpds.kbrate << "\" "
+       << "sampleFrequency=\"44100\" audioChannels=\"2\" "
+       << "protocolInfo=\"http-get:*:audio/mpeg:DLNA.ORG_PN=MP3;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000\""
+       << ">"
+       << xmlquote(mapget(songmap, "uri")) 
+       << "</res>"
+       << "</item></DIDL-Lite>";
+    return ss.str();
 }
 
 bool sleepms(int ms)

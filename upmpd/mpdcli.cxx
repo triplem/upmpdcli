@@ -96,6 +96,15 @@ bool MPDCli::showError(const string& who)
     return false;
 }
 
+#define RETRY_CMD(CMD) {                                \
+    for (int i = 0; i < 2; i++) {                       \
+        if (CMD)                                        \
+            break;                                      \
+        if (i == 1 || !showError(#CMD))                 \
+            return false;                               \
+    }                                                   \
+    }
+
 bool MPDCli::updStatus()
 {
     if (!ok()) {
@@ -104,12 +113,7 @@ bool MPDCli::updStatus()
     }
 
     mpd_status *mpds = 0;
-    for (int i = 0; i < 2; i++) {
-        if (mpds = mpd_run_status(M_CONN))
-            break;
-        if (i == 1 || !showError("MPDCli::updStatus"))
-            return false;
-    }
+    RETRY_CMD(mpds = mpd_run_status(M_CONN));
 
     m_stat.volume = mpd_status_get_volume(mpds);
     m_stat.rept = mpd_status_get_repeat(mpds);
@@ -148,15 +152,19 @@ bool MPDCli::updStatus()
     return true;
 }
 
-bool MPDCli::updSong(map<string, string>& tsong, int pos)
+bool MPDCli::updSong(unordered_map<string, string>& tsong, int pos)
 {
     // cerr << "MPDCli::updSong" << endl;
     tsong.clear();
     if (!ok())
         return false;
 
-    struct mpd_song *song = pos == -1 ? mpd_run_current_song(M_CONN) :
-        mpd_run_get_queue_song_pos(M_CONN, (unsigned int)pos);
+    struct mpd_song *song;
+    if (pos == -1) {
+        RETRY_CMD(song = mpd_run_current_song(M_CONN));
+    } else {
+        RETRY_CMD(song = mpd_run_get_queue_song_pos(M_CONN, (unsigned int)pos));
+    }
         
     if (song == 0) {
         cerr << "mpd_run_current_song failed" << endl;
@@ -230,15 +238,6 @@ bool MPDCli::setVolume(int volume, bool relative)
 
     return updStatus();
 }
-
-#define RETRY_CMD(CMD) {                                \
-    for (int i = 0; i < 2; i++) {                       \
-        if (CMD)                                        \
-            break;                                      \
-        if (i == 1 || !showError(#CMD))                 \
-            return false;                               \
-    }                                                   \
-    }
 
 int MPDCli::getVolume()
 {
