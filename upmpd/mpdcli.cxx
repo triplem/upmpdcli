@@ -25,6 +25,7 @@
 #include <mpd/song.h>
 #include <mpd/tag.h>
 #include <mpd/player.h>
+#include <mpd/queue.h>
 
 #include "mpdcli.hxx"
 
@@ -33,26 +34,12 @@ using namespace std;
 #define M_CONN ((struct mpd_connection *)m_conn)
 
 MPDCli::MPDCli(const string& host, int port, const string& pass)
-    : m_premutevolume(0)
+    : m_conn(0), m_premutevolume(0), 
+      m_host(host), m_port(port), m_password(pass)
 {
     cerr << "MPDCli::MPDCli" << endl;
-    m_conn = mpd_connection_new(host.c_str(), port, 0);
-    if (m_conn == NULL) {
-        cerr << "mpd_connection_new failed. No memory?" << endl;
+    if (!openconn()) {
         return;
-    }
-
-    if (mpd_connection_get_error(M_CONN) != MPD_ERROR_SUCCESS) {
-        cerr << "Mpd connection error: " << 
-            mpd_connection_get_error_message(M_CONN) << endl;
-        return;
-    }
-
-    if(!pass.empty()) {
-        if (!mpd_run_password(M_CONN, pass.c_str())) {
-            cerr << "Password wrong" << endl;
-            return;
-        }
     }
     m_ok = true;
     updStatus();
@@ -64,60 +51,66 @@ MPDCli::~MPDCli()
         mpd_connection_free(M_CONN);
 }
 
-bool MPDCli::setVolume(int volume, bool relative)
+bool MPDCli::openconn()
 {
-    cerr << "setVolume: vol " << volume << " relative " << relative << endl;
-    if (volume == 0) {
-        if (relative) {
-            // Restore premute volume
-            m_stat.volume = m_premutevolume;
-            cerr << "Restoring premute" << endl;
-        } else {
-            updStatus();
-            if (m_stat.volume != 0) {
-                cerr << "Saving premute: " << m_stat.volume << endl;
-                m_premutevolume = m_stat.volume;
-            }
-        }
+    if (m_conn) {
+        mpd_connection_free(M_CONN);
+        m_conn = 0;
     }
-        
-    if (relative)
-        volume += m_stat.volume;
-
-    if (volume < 0)
-        volume = 0;
-    else if (volume > 100)
-        volume = 100;
-    if (!mpd_run_set_volume(M_CONN, volume)) {
-        cerr << "Mpd set_volume error: " << 
-            mpd_connection_get_error_message(M_CONN) << endl;
+    m_conn = mpd_connection_new(m_host.c_str(), m_port, 0);
+    if (m_conn == NULL) {
+        cerr << "mpd_connection_new failed. No memory?" << endl;
         return false;
     }
-    return updStatus();
+
+    if (mpd_connection_get_error(M_CONN) != MPD_ERROR_SUCCESS) {
+        showError("MPDCli::openconn");
+        return false;
+    }
+
+    if(!m_password.empty()) {
+        if (!mpd_run_password(M_CONN, m_password.c_str())) {
+            cerr << "Password wrong" << endl;
+            return false;
+        }
+    }
+    return true;
 }
 
-int MPDCli::getVolume()
+bool MPDCli::showError(const string& who)
 {
-    updStatus();
-    return m_stat.volume == -1 ? 0: m_stat.volume;
+    if (!ok()) {
+        cerr << "MPDCli::showError: bad state" << endl;
+        return false;
+    }
+
+    cerr << who << " failed: " <<  mpd_connection_get_error_message(M_CONN);
+    int error = mpd_connection_get_error(M_CONN);
+    if (error == MPD_ERROR_SERVER) {
+        cerr << " server error: " << mpd_connection_get_server_error(M_CONN) ;
+    }
+    cerr << endl;
+    if (error == MPD_ERROR_CLOSED)
+        if (openconn())
+            return true;
+    return false;
 }
 
 bool MPDCli::updStatus()
 {
-    //cerr << "MPDCli::updStatus" << endl;
-    if (!m_ok) {
+    if (!ok()) {
         cerr << "MPDCli::updStatus: bad state" << endl;
         return false;
     }
-    memset(&m_stat, 0, sizeof(m_stat));
-    mpd_status *mpds = mpd_run_status(M_CONN);
-    if (mpds == 0) {
-        cerr << "MPDCli::updStatus: status failed. " <<
-            "connec error: " <<  mpd_connection_get_error_message(M_CONN) <<
-            "server error: " << mpd_connection_get_server_error(M_CONN) <<
-             endl;
-        return false;
+
+    mpd_status *mpds = 0;
+    for (int i = 0; i < 2; i++) {
+        if (mpds = mpd_run_status(M_CONN))
+            break;
+        if (i == 1 || !showError("MPDCli::updStatus"))
+            return false;
     }
+
     m_stat.volume = mpd_status_get_volume(mpds);
     m_stat.rept = mpd_status_get_repeat(mpds);
     m_stat.random = mpd_status_get_random(mpds);
@@ -142,6 +135,7 @@ bool MPDCli::updStatus()
     m_stat.mixrampdb = mpd_status_get_mixrampdb(mpds);
     m_stat.mixrampdelay = mpd_status_get_mixrampdelay(mpds);
     m_stat.songpos = mpd_status_get_song_pos(mpds);
+    cerr << "MPD Status. Pos: " << m_stat.songpos << endl;
     m_stat.songid = mpd_status_get_song_id(mpds);
     m_stat.songelapsedms = mpd_status_get_elapsed_ms(mpds);
     m_stat.songlenms = mpd_status_get_total_time(mpds) * 1000;
@@ -149,7 +143,7 @@ bool MPDCli::updStatus()
 
     const char *err = mpd_status_get_error(mpds);
     if (err != 0)
-        m_stat.errormessage = err;
+        m_stat.errormessage.assign(err);
 
     mpd_status_free(mpds);
     return true;
@@ -157,7 +151,9 @@ bool MPDCli::updStatus()
 
 bool MPDCli::updSong()
 {
-    cerr << "MPDCli::updSong" << endl;
+    // cerr << "MPDCli::updSong" << endl;
+    if (!ok())
+        return false;
     struct mpd_song *song = mpd_run_current_song(M_CONN);
     if (song == 0) {
         cerr << "mpd_run_current_song failed" << endl;
@@ -177,7 +173,7 @@ bool MPDCli::updSong()
     cp = mpd_song_get_tag(song, MPD_TAG_TITLE, 0);
     if (cp != 0) {
         m_stat.currentsong["dc:title"] = cp;
-        cerr << "Title: " << cp << endl;
+        cerr << "Title: [" << cp << "]" << endl;
     }
 
     cp = mpd_song_get_tag(song, MPD_TAG_TRACK, 0);
@@ -191,5 +187,152 @@ bool MPDCli::updSong()
     cp = mpd_song_get_uri(song);
     if (cp != 0)
         m_stat.currentsong["uri"] = cp;
+
     return true;
+}
+
+bool MPDCli::setVolume(int volume, bool relative)
+{
+    if (!ok()) {
+        return false;
+    }
+    cerr << "setVolume: vol " << volume << " relative " << relative << endl;
+    if (volume == 0) {
+        if (relative) {
+            // Restore premute volume
+            m_stat.volume = m_premutevolume;
+            cerr << "Restoring premute" << endl;
+        } else {
+            updStatus();
+            if (m_stat.volume != 0) {
+                cerr << "Saving premute: " << m_stat.volume << endl;
+                m_premutevolume = m_stat.volume;
+            }
+        }
+    }
+        
+    if (relative)
+        volume += m_stat.volume;
+
+    if (volume < 0)
+        volume = 0;
+    else if (volume > 100)
+        volume = 100;
+    
+    for (int i = 0; i < 2; i++) {
+        if (mpd_run_set_volume(M_CONN, volume))
+            break;
+        if (i == 1 || !showError("MPDCli::updStatus"))
+            return false;
+    }
+
+    return updStatus();
+}
+
+#define RETRY_CMD(CMD) {                                \
+    for (int i = 0; i < 2; i++) {                       \
+        if (CMD)                                        \
+            break;                                      \
+        if (i == 1 || !showError(#CMD))                 \
+            return false;                               \
+    }                                                   \
+    }
+
+int MPDCli::getVolume()
+{
+    if (!updStatus())
+        return -1;
+    return m_stat.volume == -1 ? 0: m_stat.volume;
+}
+
+bool MPDCli::togglePause()
+{
+    cerr << "MPDCli::togglePause" << endl;
+    if (!ok())
+        return false;
+    RETRY_CMD(mpd_run_toggle_pause(M_CONN));
+    return true;
+}
+
+bool MPDCli::play()
+{
+    cerr << "MPDCli::play" << endl;
+    if (!ok())
+        return false;
+    RETRY_CMD(mpd_run_play(M_CONN));
+    return true;
+}
+bool MPDCli::stop()
+{
+    cerr << "MPDCli::stop" << endl;
+    if (!ok())
+        return false;
+    RETRY_CMD(mpd_run_stop(M_CONN));
+    return true;
+}
+bool MPDCli::next()
+{
+    cerr << "MPDCli::next" << endl;
+    if (!ok())
+        return false;
+    RETRY_CMD(mpd_run_next(M_CONN));
+    return true;
+}
+bool MPDCli::previous()
+{
+    cerr << "MPDCli::previous" << endl;
+    if (!ok())
+        return false;
+    RETRY_CMD(mpd_run_previous(M_CONN));
+    return true;
+}
+bool MPDCli::repeat(bool on)
+{
+    cerr << "MPDCli::repeat:" << on << endl;
+    if (!ok())
+        return false;
+    RETRY_CMD(mpd_run_repeat(M_CONN, on));
+    return true;
+}
+bool MPDCli::random(bool on)
+{
+    cerr << "MPDCli::random:" << on << endl;
+    if (!ok())
+        return false;
+    RETRY_CMD(mpd_run_random(M_CONN, on));
+    return true;
+}
+bool MPDCli::single(bool on)
+{
+    cerr << "MPDCli::single:" << on << endl;
+    if (!ok())
+        return false;
+    RETRY_CMD(mpd_run_single(M_CONN, on));
+    return true;
+}
+
+int MPDCli::insert(const string& uri, int pos)
+{
+    cerr << "MPDCli::insert at :" << pos << " uri " << uri << endl;
+    if (!ok())
+        return -1;
+
+    if (!updStatus())
+        return -1;
+
+    int id = mpd_run_add_id_to(M_CONN, uri.c_str(), (unsigned)pos);
+
+    if (id < 0) {
+        showError("MPDCli::run_add_id");
+        return -1;
+    }
+    return id;
+}
+int MPDCli::curpos()
+{
+    if (!updStatus())
+        return -1;
+    cerr << "MPDCli::curpos: pos: " << m_stat.songpos << " id " 
+         << m_stat.songid << endl;
+    return m_stat.songpos;
 }

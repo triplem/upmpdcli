@@ -92,7 +92,7 @@ UpnpDevice::UpnpDevice(const string& deviceId,
 // Main libupnp callback: use the device id and call the right device
 int UpnpDevice::sCallBack(Upnp_EventType et, void* evp, void* tok)
 {
-    cerr << "UpnpDevice::sCallBack" << endl;
+    //cerr << "UpnpDevice::sCallBack" << endl;
 
     string deviceid;
     switch (et) {
@@ -202,7 +202,7 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
 
         vector<string> names;
         vector<string> values;
-        if (!getEventData(names, values)) {
+        if (!getEventData(act->ServiceId, names, values)) {
             break;
         }
         if (names.size() != values.size()) {
@@ -254,7 +254,7 @@ void UpnpDevice::addServiceType(const std::string& serviceId,
 
 void UpnpDevice::addActionMapping(const std::string& actName, soapfun fun)
 {
-    cerr << "UpnpDevice::addActionMapping:" << actName << endl;
+    // cerr << "UpnpDevice::addActionMapping:" << actName << endl;
     m_calls[actName] = fun;
 }
 

@@ -50,9 +50,19 @@ public:
     MPDCli(const std::string& host, int port = 6600, 
            const std::string& pass="");
     ~MPDCli();
-    bool ok() {return m_ok;}
+    bool ok() {return m_ok && m_conn;}
     bool setVolume(int ivol, bool relative = false);
     int  getVolume();
+    bool togglePause();
+    bool play();
+    bool stop();
+    bool next();
+    bool previous();
+    bool repeat(bool on);
+    bool random(bool on);
+    bool single(bool on);
+    int insert(const std::string& uri, int pos);
+    int curpos();
     const struct MpdStatus& getStatus()
     {
         updStatus();
@@ -64,8 +74,14 @@ private:
     bool m_ok;
     MpdStatus m_stat;
     int m_premutevolume;
+    std::string m_host;
+    int m_port;
+    std::string m_password;
+
+    bool openconn();
     bool updStatus();
     bool updSong();
+    bool showError(const std::string& who);
 };
 
 

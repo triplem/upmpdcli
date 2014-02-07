@@ -27,5 +27,7 @@ upmpdcli_SOURCES = upmpd/upmpd.cxx upmpd/mpdcli.cxx upmpd/upmpdutils.cxx
 upmpdcli_LDADD = libupnpp.la -lixml -lupnp -lexpat -lmpdclient -lpthread 
 #upmpdcli_LDFLAGS = 
 
-dist_pkgdata_DATA = upmpd/description.xml
+dist_pkgdata_DATA = upmpd/description.xml upmpd/AVTransport.xml \
+                  upmpd/RenderingControl.xml
+
 

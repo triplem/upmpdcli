@@ -59,15 +59,15 @@ bool decodeSoapBody(const char *callnm, IXML_Document *actReq,
         }
         const char *name = ixmlNode_getNodeName(cld);
         if (cld == 0) {
-            cerr << "decodeSoap: got null name ??" << endl;
+            cerr << "decodeSoap: got null name ??:" << 
+                ixmlPrintNode(cld) << endl;
             goto out;
         }
         IXML_Node *txtnode = ixmlNode_getFirstChild(cld);
-        if (txtnode == 0) {
-            cerr << "decodeSoap: got null name ??" << endl;
-            goto out;
+        const char *value = "";
+        if (txtnode != 0) {
+            value = ixmlNode_getNodeValue(txtnode);
         }
-        const char *value = ixmlNode_getNodeValue(txtnode);
         // Can we get an empty value here ?
         if (value == 0)
             value = "";

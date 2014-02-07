@@ -56,10 +56,10 @@ static VirtualDir::FileEnt *vdgetentry(const char *pathname)
 
 static int vdgetinfo(const char *fn, struct File_Info* info )
 {
-	cerr << "vdgetinfo: " << fn << endl;
+	//cerr << "vdgetinfo: " << fn << endl;
 	VirtualDir::FileEnt *entry = vdgetentry(fn);
 	if (entry == 0) {
-		cerr << "vdgetinfo: no entry" << endl;
+		cerr << "vdgetinfo: no entry for " << fn << endl;
 		return -1;
 	}
 	info->file_length = entry->content.size();
@@ -71,10 +71,10 @@ static int vdgetinfo(const char *fn, struct File_Info* info )
 }
 static UpnpWebFileHandle vdopen(const char* fn, enum UpnpOpenFileMode Mode)
 {
-	cerr << "vdopen: " << fn << endl;
+	//cerr << "vdopen: " << fn << endl;
 	VirtualDir::FileEnt *entry = vdgetentry(fn);
 	if (entry == 0) {
-		cerr << "vdopen: no entry" << endl;
+		cerr << "vdopen: no entry for " << fn << endl;
 		return NULL;
 	}
 	return new Handle(entry);
@@ -82,7 +82,7 @@ static UpnpWebFileHandle vdopen(const char* fn, enum UpnpOpenFileMode Mode)
 
 static int vdread(UpnpWebFileHandle fileHnd, char* buf, size_t buflen)
 {
-	cerr << "vdread: " << endl;
+	// cerr << "vdread: " << endl;
 	if (buflen == 0)
 		return 0;
 	Handle *h = (Handle *)fileHnd;
@@ -97,7 +97,7 @@ static int vdread(UpnpWebFileHandle fileHnd, char* buf, size_t buflen)
 
 static int vdseek(UpnpWebFileHandle fileHnd, long offset, int origin)
 {
-	cerr << "vdseek: " << endl;
+	// cerr << "vdseek: " << endl;
 	Handle *h = (Handle *)fileHnd;
 	if (origin == 0)
 		h->offset = offset;
@@ -111,7 +111,7 @@ static int vdseek(UpnpWebFileHandle fileHnd, long offset, int origin)
 }
 static int vdwrite(UpnpWebFileHandle fileHnd, char* buf, size_t buflen)
 {
-	cerr << "vdwrite" << endl;
+	// cerr << "vdwrite" << endl;
 	return -1;
 }
 
@@ -149,8 +149,8 @@ bool VirtualDir::addFile(const string& _path, const string& name,
 	entry.mimetype = mimetype;
 	entry.content = content;
 	m_dirs[path][name] = entry;
-	cerr << "VirtualDir::addFile: added entry for dir " << 
-		path << " name " << name << endl;
+	// cerr << "VirtualDir::addFile: added entry for dir " << 
+	// path << " name " << name << endl;
 }
 
 VirtualDir::FileEnt *VirtualDir::getFile(const string& _path, 
@@ -161,17 +161,17 @@ VirtualDir::FileEnt *VirtualDir::getFile(const string& _path,
 		path += '/';
 	}
 
-	cerr << "VirtualDir::getFile: path " << path << " name " << name << endl;
+	// cerr << "VirtualDir::getFile: path " << path << " name " << name << endl;
 
 	map<string, map<string,VirtualDir::FileEnt> >::iterator dir = 
 		m_dirs.find(path);
 	if (dir == m_dirs.end()) {
-		cerr << "VirtualDir::getFile: no dir" << endl;
+		cerr << "VirtualDir::getFile: no dir: " << path << endl;
 		return 0;
 	}
 	map<string, FileEnt>::iterator f = dir->second.find(name);
 	if (f == dir->second.end()) {
-		cerr << "VirtualDir::getFile: no file" << endl;
+		cerr << "VirtualDir::getFile: no file: " << path << endl;
 		return 0;
 	}
 

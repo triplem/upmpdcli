@@ -34,11 +34,26 @@
       <dataType>string</dataType>
     </stateVariable>
     <stateVariable>
+      <name>RecordStorageMedium</name>
+      <sendEventsAttribute>no</sendEventsAttribute>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable>
+      <name>PossibleRecordStorageMedia</name>
+      <sendEventsAttribute>no</sendEventsAttribute>
+      <dataType>string</dataType>
+    </stateVariable>
+    <stateVariable>
       <name>CurrentPlayMode</name>
       <sendEventsAttribute>no</sendEventsAttribute>
       <dataType>string</dataType>
       <allowedValueList>
         <allowedValue>NORMAL</allowedValue>
+        <allowedValue>SHUFFLE</allowedValue>
+        <allowedValue>REPEAT_ONE</allowedValue>
+        <allowedValue>REPEAT_ALL</allowedValue>
+        <allowedValue>RANDOM</allowedValue>
+        <allowedValue>DIRECT_1</allowedValue>
       </allowedValueList>
       <defaultValue>NORMAL</defaultValue>
     </stateVariable>
