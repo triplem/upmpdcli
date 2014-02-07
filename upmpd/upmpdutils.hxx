@@ -34,6 +34,8 @@ extern std::string xmlquote(const std::string& in);
 extern int percentodbvalue(int value);
 extern int dbvaluetopercent(int dbvalue);
 
+extern bool sleepms(int ms);
+
 // Format milliseconds into H+:MM:SS
 extern std::string upnpduration(int ms);
 

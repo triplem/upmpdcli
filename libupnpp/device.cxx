@@ -38,6 +38,32 @@ static string xmlquote(const string& in)
     return out;
 }
 
+
+static bool vectorstoargslists(const vector<string>& names, 
+                               const vector<string>& values,
+                               vector<string>& qvalues,
+                               vector<const char *>& cnames,
+                               vector<const char *>& cvalues)
+{
+    if (names.size() != values.size()) {
+        cerr << "vectorstoargslists: bad sizes" << endl;
+        return false;
+    }
+
+    cnames.reserve(names.size());
+    for (unsigned int i = 0; i < names.size(); i++) {
+        cnames.push_back(names[i].c_str());
+    }
+    qvalues.clear();
+    qvalues.reserve(values.size());
+    cvalues.reserve(values.size());
+    for (unsigned int i = 0; i < values.size(); i++) {
+        qvalues.push_back(xmlquote(values[i]));
+        cvalues.push_back(qvalues[i].c_str());
+    }
+    return true;
+}
+
 UpnpDevice::UpnpDevice(const string& deviceId, 
                        const unordered_map<string, string>& xmlfiles)
     : m_deviceId(deviceId)
@@ -144,7 +170,7 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
             " Params: " << ixmlPrintDocument(act->ActionRequest) << endl;
 
         unordered_map<string, string>::const_iterator servit = 
-            m_serviceTypes.find(serviceKey(act->DevUDN,act->ServiceID));
+            m_serviceTypes.find(act->ServiceID);
         if (servit == m_serviceTypes.end()) {
             cerr << "Bad serviceID" << endl;
             return UPNP_E_INVALID_PARAM;
@@ -200,30 +226,12 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
             (struct  Upnp_Subscription_Request*)evp;
         cerr << "UPNP_EVENT_SUBSCRIPTION_REQUEST: " << act->ServiceId << endl;
 
-        vector<string> names;
-        vector<string> values;
-        if (!getEventData(act->ServiceId, names, values)) {
+        vector<string> names, values, qvalues;
+        if (!getEventData(true, act->ServiceId, names, values)) {
             break;
         }
-        if (names.size() != values.size()) {
-            break;
-        }
-
-        vector<const char *>cnames;
-        cnames.reserve(names.size());
-        for (unsigned int i = 0; i < names.size(); i++) {
-            cnames.push_back(names[i].c_str());
-        }
-
-        for (unsigned int i = 0; i < values.size(); i++) {
-            values[i] = xmlquote(values[i]);
-        }
-        vector<const char *>cvalues;
-        cvalues.reserve(values.size());
-        for (unsigned int i = 0; i < values.size(); i++) {
-            cvalues.push_back(values[i].c_str());
-        }
-
+        vector<const char *> cnames, cvalues;
+        vectorstoargslists(names, values, qvalues, cnames, cvalues);
         int ret = 
             UpnpAcceptSubscription(m_lib->getdvh(), act->UDN, act->ServiceId,
                                    &cnames[0], &cvalues[0],
@@ -248,8 +256,8 @@ void UpnpDevice::addServiceType(const std::string& serviceId,
                                 const std::string& serviceType)
 {
     cerr << "UpnpDevice::addServiceType: [" << 
-        serviceKey(m_deviceId, serviceId) << "] -> [" << serviceType << endl;
-    m_serviceTypes[serviceKey(m_deviceId, serviceId)] = serviceType;
+        serviceId << "] -> [" << serviceType << endl;
+    m_serviceTypes[serviceId] = serviceType;
 }
 
 void UpnpDevice::addActionMapping(const std::string& actName, soapfun fun)
@@ -260,30 +268,40 @@ void UpnpDevice::addActionMapping(const std::string& actName, soapfun fun)
 
 void UpnpDevice::notifyEvent(const string& serviceId,
                              const vector<string>& names, 
-                             const vector<string>& ivalues)
+                             const vector<string>& values)
 {
     cerr << "UpnpDevice::notifyEvent" << endl;
-    vector<const char *>cnames;
-    cnames.reserve(names.size());
-    for (unsigned int i = 0; i < names.size(); i++)
-        cnames.push_back(names[i].c_str());
 
-    vector<string> values;
-    values.reserve(ivalues.size());
-    for (unsigned int i = 0; i < ivalues.size(); i++) {
-        values.push_back(xmlquote(ivalues[i]));
-        cerr << "Pushed value: [" << values[i] << "]" << endl;
-    }
-    vector<const char *>cvalues;
-    cvalues.reserve(values.size());
-    for (unsigned int i = 0; i < values.size(); i++)
-        cvalues.push_back(values[i].c_str());
+    vector<const char *> cnames, cvalues;
+    vector<string> qvalues;
+    vectorstoargslists(names, values, qvalues, cnames, cvalues);
 
     int ret = UpnpNotify(m_lib->getdvh(), m_deviceId.c_str(), 
-                         serviceId.c_str(),
-                         &cnames[0], &cvalues[0],
+                         serviceId.c_str(), &cnames[0], &cvalues[0],
                          int(cnames.size()));
     if (ret != UPNP_E_SUCCESS) {
         cerr << "UpnpDevice::notifyEvent: UpnpNotify failed: " << ret << endl;
+    }
+}
+
+void UpnpDevice::eventloop()
+{
+    struct timespec duration;
+    duration.tv_sec = 0;
+    duration.tv_nsec = 500 * 1000 * 1000; // 1/2 S
+    while (nanosleep(&duration, 0) == 0) {
+        static int count = 0;
+        //cerr << "UpnpDevice::eventloop: " << count++ << endl;
+        PTMutexLocker lock(cblock);
+        for (unordered_map<string, string>::const_iterator it = 
+                 m_serviceTypes.begin();
+             it != m_serviceTypes.end(); it++) {
+            vector<string> names, values;
+            if (!getEventData(false, it->first, names, values) || 
+                names.empty()) {
+                continue;
+            }
+            notifyEvent(it->first, names, values);
+        }
     }
 }

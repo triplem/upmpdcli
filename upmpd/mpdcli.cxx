@@ -125,18 +125,17 @@ bool MPDCli::updStatus()
     case MPD_STATE_PAUSE: m_stat.state = MpdStatus::MPDS_PAUSE;break;
     }
 
-    m_stat.currentsong.clear();
-    if (m_stat.state == MpdStatus::MPDS_PAUSE ||
-        m_stat.state == MpdStatus::MPDS_PLAY) {
-        updSong();
-    }
 
     m_stat.crossfade = mpd_status_get_crossfade(mpds);
     m_stat.mixrampdb = mpd_status_get_mixrampdb(mpds);
     m_stat.mixrampdelay = mpd_status_get_mixrampdelay(mpds);
     m_stat.songpos = mpd_status_get_song_pos(mpds);
-    cerr << "MPD Status. Pos: " << m_stat.songpos << endl;
     m_stat.songid = mpd_status_get_song_id(mpds);
+    if (m_stat.songpos >= 0) {
+        updSong(m_stat.currentsong);
+        updSong(m_stat.nextsong, m_stat.songpos + 1);
+    }
+
     m_stat.songelapsedms = mpd_status_get_elapsed_ms(mpds);
     m_stat.songlenms = mpd_status_get_total_time(mpds) * 1000;
     m_stat.kbrate = mpd_status_get_kbit_rate(mpds);
@@ -149,45 +148,48 @@ bool MPDCli::updStatus()
     return true;
 }
 
-bool MPDCli::updSong()
+bool MPDCli::updSong(map<string, string>& tsong, int pos)
 {
     // cerr << "MPDCli::updSong" << endl;
+    tsong.clear();
     if (!ok())
         return false;
-    struct mpd_song *song = mpd_run_current_song(M_CONN);
+
+    struct mpd_song *song = pos == -1 ? mpd_run_current_song(M_CONN) :
+        mpd_run_get_queue_song_pos(M_CONN, (unsigned int)pos);
+        
     if (song == 0) {
         cerr << "mpd_run_current_song failed" << endl;
         return false;
     }
 
     const char *cp;
-
     cp = mpd_song_get_tag(song, MPD_TAG_ARTIST, 0);
     if (cp != 0)
-        m_stat.currentsong["upnp:artist"] = cp;
+        tsong["upnp:artist"] = cp;
 
     cp = mpd_song_get_tag(song, MPD_TAG_ALBUM, 0);
     if (cp != 0)
-        m_stat.currentsong["upnp:album"] = cp;
+        tsong["upnp:album"] = cp;
 
     cp = mpd_song_get_tag(song, MPD_TAG_TITLE, 0);
     if (cp != 0) {
-        m_stat.currentsong["dc:title"] = cp;
-        cerr << "Title: [" << cp << "]" << endl;
+        tsong["dc:title"] = cp;
     }
 
     cp = mpd_song_get_tag(song, MPD_TAG_TRACK, 0);
     if (cp != 0)
-        m_stat.currentsong["upnp:originalTrackNumber"] = cp;
+        tsong["upnp:originalTrackNumber"] = cp;
 
     cp = mpd_song_get_tag(song, MPD_TAG_GENRE, 0);
     if (cp != 0)
-        m_stat.currentsong["upnp:genre"] = cp;
+        tsong["upnp:genre"] = cp;
     
     cp = mpd_song_get_uri(song);
     if (cp != 0)
-        m_stat.currentsong["uri"] = cp;
+        tsong["uri"] = cp;
 
+    mpd_song_free(song);
     return true;
 }
 

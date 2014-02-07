@@ -37,12 +37,21 @@ using namespace std::placeholders;
 
 static const string friendlyName("UpMpd");
 
-static const string deviceDescription;
-
-string rdc_scdp;
-
-string avt_scdp;
-
+static string mpdsToPlaymode(const struct MpdStatus& mpds)
+{
+	string playmode = "NORMAL";
+    if (!mpds.rept && mpds.random && !mpds.single)
+		playmode = "SHUFFLE";
+	else if (mpds.rept && !mpds.random && mpds.single)
+		playmode = "REPEAT_ONE";
+	else if (mpds.rept && !mpds.random && !mpds.single)
+		playmode = "REPEAT_ALL";
+	else if (mpds.rept && mpds.random && !mpds.single)
+		playmode = "RANDOM";
+	else if (!mpds.rept && !mpds.random && mpds.single)
+		playmode = "DIRECT_1";
+	return playmode;
+}
 
 class UpMpd : public UpnpDevice {
 public:
@@ -58,7 +67,8 @@ public:
 	int listPresets(const SoapArgs& sc, SoapData& data);
 	int selectPreset(const SoapArgs& sc, SoapData& data);
 	int getVolumeDBRange(const SoapArgs& sc, SoapData& data);
-    virtual bool getEventDataRendering(std::vector<std::string>& names, 
+    virtual bool getEventDataRendering(bool all, 
+									   std::vector<std::string>& names, 
 									   std::vector<std::string>& values);
 
 	// AVTransport
@@ -73,17 +83,16 @@ public:
 	int playcontrol(const SoapArgs& sc, SoapData& data, int what);
 	int seek(const SoapArgs& sc, SoapData& data);
 	int seqcontrol(const SoapArgs& sc, SoapData& data, int what);
-    virtual bool getEventDataTransport(std::vector<std::string>& names, 
+    virtual bool getEventDataTransport(bool all, 
+									   std::vector<std::string>& names, 
 									   std::vector<std::string>& values);
 
 	// Shared
-    virtual bool getEventData(const string& serviceid, 
+    virtual bool getEventData(bool all, const string& serviceid, 
 							  std::vector<std::string>& names, 
 							  std::vector<std::string>& values);
 
 private:
-	void doNotifyEventRendering();
-	void doNotifyEventTransport();
 	MPDCli *m_mpdcli;
 	unordered_map<string, string> m_rdupdates;
 	unordered_map<string, string> m_tpupdates;
@@ -186,14 +195,14 @@ UpMpd::UpMpd(const string& deviceid,
 }
 
 
-bool UpMpd::getEventData(const string& serviceid, 
+bool UpMpd::getEventData(bool all, const string& serviceid, 
 						 std::vector<std::string>& names, 
 						 std::vector<std::string>& values)
 {
 	if (!serviceid.compare(serviceIdRender)) {
-		return getEventDataRendering(names, values);
+		return getEventDataRendering(all, names, values);
 	} else if (!serviceid.compare(serviceIdTransport)) {
-		return getEventDataTransport(names, values);
+		return getEventDataTransport(all, names, values);
 	} else {
 		cerr << "UpMpd::getEventData: servid? [" << serviceid << "]" << endl;
 		return UPNP_E_INVALID_PARAM;
@@ -217,47 +226,43 @@ bool UpMpd::getEventData(const string& serviceid,
 //     <VolumeDB channel=”Master” val=”24”/>
 //   </InstanceID>
 // </Event>
-bool UpMpd::getEventDataRendering(std::vector<std::string>& names, 
+bool UpMpd::getEventDataRendering(bool all, std::vector<std::string>& names, 
 								  std::vector<std::string>& values)
 {
+	if (all) {
+		// Record all values in the changes structure.
+		int volume = m_mpdcli->getVolume();
+		renderingUpdate("Mute", volume == 0 ? "1" : "0");
+		char cvalue[40];
+		sprintf(cvalue, "%d", volume);
+		renderingUpdate("Volume", cvalue);
+		sprintf(cvalue, "%d", percentodbvalue(volume));
+		renderingUpdate("VolumeDB", cvalue);
+		renderingUpdate("PresetNameList", "FactoryDefault");
+	}
+
+	if (m_rdupdates.empty())
+		return true;
+
 	names.push_back("LastChange");
 
-	int volume = m_mpdcli->getVolume();
-	char cvalue[40];
 	string 
 		chgdata("<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT_RCS\">\n"
 				"<InstanceID val=\"0\">\n");
-
-	chgdata  += "<Mute channel=\"Master\" val=\"";
-    chgdata += volume == 0 ? "1" : "0";
-	chgdata += "\"/>\n";
-
-	chgdata += "<Volume channel=\"Master\" val=\"";
-	sprintf(cvalue, "%d", volume);
-	chgdata += cvalue;
-	chgdata += "\"/>\n";
-
-	chgdata += "<VolumeDB channel=\"Master\" val=\"";
-	sprintf(cvalue, "%d", percentodbvalue(volume));
-	chgdata += cvalue;
-	chgdata += "\"/>\n";
-
-	chgdata += "<PresetNameList val=\"FactoryDefault\"/>\n";
-
+	for (unordered_map<string, string>::const_iterator it = m_rdupdates.begin();
+		 it != m_rdupdates.end(); it++) {
+		chgdata += "<";
+		chgdata += it->first;
+		chgdata += " channel=\"Master\" val=\"";
+		chgdata += xmlquote(it->second);
+		chgdata += "\"/>\n";
+	}
 	chgdata += "</InstanceID>\n</Event>\n";
 
 	values.push_back(chgdata);
-
+	m_rdupdates.clear();
 	cerr << "UpMpd::getEventDataRendering: " << chgdata << endl;
 	return true;
-}
-
-void UpMpd::doNotifyEventRendering()
-{
-	std::vector<std::string> names;
-	std::vector<std::string> values;
-	getEventDataRendering(names, values);
-	notifyEvent(serviceIdRender, names, values);
 }
 
 int UpMpd::getVolumeDBRange(const SoapArgs& sc, SoapData& data)
@@ -400,51 +405,127 @@ int UpMpd::selectPreset(const SoapArgs& sc, SoapData& data)
 
 ///////////////// AVTransport methods
 
-bool UpMpd::getEventDataTransport(std::vector<std::string>& names, 
-								  std::vector<std::string>& values)
-{
-	return true;
-}
-
 // Some state variables do not generate events and must be polled by
 // the control point: RelativeTimePosition AbsoluteTimePosition
 // RelativeCounterPosition AbsoluteCounterPosition.
 // This leaves us with:
-//    TransportState
-//    TransportStatus
-//    PlaybackStorageMedium
-//    PossiblePlaybackStorageMedia
-//    RecordStorageMedium
-//    PossibleRecordStorageMedia
-//    CurrentPlayMode
-//    TransportPlaySpeed
-//    RecordMediumWriteStatus
-//    CurrentRecordQualityMode
-//    PossibleRecordQualityModes
-//    NumberOfTracks
-//    CurrentTrack
-//    CurrentTrackDuration
-//    CurrentMediaDuration
-//    CurrentTrackMetaData
-//    CurrentTrackURI
-//    AVTransportURI
-//    AVTransportURIMetaData
-//    NextAVTransportURI
-//    NextAVTransportURIMetaData
-//    RelativeTimePosition
-//    AbsoluteTimePosition
-//    RelativeCounterPosition
-//    AbsoluteCounterPosition
-//    CurrentTransportActions
-//    LastChange
+//    *TransportState
+//    *TransportStatus
+//    *PlaybackStorageMedium
+//    *PossiblePlaybackStorageMedia
+//    *RecordStorageMedium
+//    *PossibleRecordStorageMedia
+//    *CurrentPlayMode
+//    *TransportPlaySpeed
+//    *RecordMediumWriteStatus
+//    *CurrentRecordQualityMode
+//    *PossibleRecordQualityModes
+//    *NumberOfTracks
+//    *CurrentTrack
+//    *CurrentTrackDuration
+//    *CurrentMediaDuration
+//    *CurrentTrackMetaData
+//    *CurrentTrackURI
+//    *AVTransportURI
+//    *AVTransportURIMetaData
+//    *NextAVTransportURI
+//    *NextAVTransportURIMetaData
+//    *RelativeTimePosition
+//    *AbsoluteTimePosition
+//    *RelativeCounterPosition
+//    *AbsoluteCounterPosition
+//    *CurrentTransportActions
+//
+// To be all bundled inside:    LastChange
 
-void UpMpd::doNotifyEventTransport()
+bool UpMpd::getEventDataTransport(bool all, std::vector<std::string>& names, 
+								  std::vector<std::string>& values)
 {
-	std::vector<std::string> names;
-	std::vector<std::string> values;
-	getEventDataTransport(names, values);
-	notifyEvent(serviceIdTransport, names, values);
+	if (all) {
+		// Record all values in the changes structure.
+		const struct MpdStatus &mpds = m_mpdcli->getStatus();
+		bool is_song = (mpds.state == MpdStatus::MPDS_PLAY) || 
+			(mpds.state == MpdStatus::MPDS_PAUSE);
+
+		string tstate("STOPPED");
+		string tactions("Next,Previous");
+		switch(mpds.state) {
+		case MpdStatus::MPDS_PLAY: 
+			tstate = "PLAYING"; 
+			tactions += ",Stop,Pause,Seek";
+			break;
+		case MpdStatus::MPDS_PAUSE: 
+			tstate = "PAUSED_PLAYBACK"; 
+			tactions += ",Play,Stop,Seek";
+			break;
+		default:
+			tactions += ",Play";
+		}
+		transportUpdate("TransportState", tstate);
+		transportUpdate("CurrentTransportActions", tactions);
+		transportUpdate("TransportStatus", m_mpdcli->ok() ? 
+						"OK" : "ERROR_OCCURRED");
+		transportUpdate("TransportPlaySpeed", "1");
+		transportUpdate("NumberOfTracks", "1");
+		transportUpdate("CurrentMediaDuration", is_song?
+						upnpduration(mpds.songlenms):"00:00:00");
+		transportUpdate("CurrentTrackDuration", is_song?
+						upnpduration(mpds.songlenms):"00:00:00");
+
+		string thisuri = mapget(mpds.currentsong, "uri");
+		transportUpdate("CurrentTrack", "1");
+		transportUpdate("CurrentTrackURI", thisuri);
+		transportUpdate("CurrentTrackMetaData", is_song?didlmake(mpds) : "");
+		transportUpdate("AVTransportURI", thisuri);
+		transportUpdate("AVTransportURIMetaData", is_song?didlmake(mpds) : "");
+		transportUpdate("RelativeTimePosition", is_song?
+						upnpduration(mpds.songelapsedms):"0:00:00");
+		transportUpdate("AbsoluteTimePosition", is_song?
+						upnpduration(mpds.songelapsedms) : "0:00:00");
+
+		transportUpdate("NextAVTransportURI", "NOT_IMPLEMENTED");
+		transportUpdate("NextAVTransportURIMetaData", "NOT_IMPLEMENTED");
+		string playmedium("NONE");
+		if (is_song)
+			playmedium = thisuri.find("http://") == 0 ?	"HDD" : "NETWORK";
+		transportUpdate("PlaybackStorageMedium", playmedium);
+		transportUpdate("PossiblePlaybackStorageMedium", "HDD,NETWORK");
+		transportUpdate("RecordStorageMedium", "NOT_IMPLEMENTED");
+		transportUpdate("PossibleRecordStorageMedium", "NOT_IMPLEMENTED");
+		transportUpdate("RecordMediumWriteStatus", "NOT_IMPLEMENTED");
+		transportUpdate("CurrentRecordQualityMode", "NOT_IMPLEMENTED");
+		transportUpdate("PossibleRecordQualityModes", "NOT_IMPLEMENTED");
+		transportUpdate("RelativeCounterPosition", "0");
+		transportUpdate("AbsoluteCounterPosition", "0");
+		transportUpdate("CurrentPlayMode", mpdsToPlaymode(mpds));
+	}
+
+	if (m_tpupdates.empty()) {
+		cerr << "UpMpd::getEventDataTransport: no updates" << endl;
+		return true;
+	}
+
+	names.push_back("LastChange");
+
+	string 
+		chgdata("<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT_RCS\">\n"
+				"<InstanceID val=\"0\">\n");
+	for (unordered_map<string, string>::const_iterator it = m_tpupdates.begin();
+		 it != m_tpupdates.end(); it++) {
+		chgdata += "<";
+		chgdata += it->first;
+		chgdata += " val=\"";
+		chgdata += xmlquote(it->second);
+		chgdata += "\"/>\n";
+	}
+	chgdata += "</InstanceID>\n</Event>\n";
+
+	values.push_back(chgdata);
+	m_tpupdates.clear();
+	cerr << "UpMpd::getEventDataTransport: " << chgdata << endl;
+	return true;
 }
+
 
 // http://192.168.4.4:8200/MediaItems/246.mp3
 int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
@@ -477,7 +558,6 @@ int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
 	if (m_mpdcli->insert(uri, curpos+1) < 0) {
 		return UPNP_E_INTERNAL_ERROR;
 	}
-
 	if (!setnext) {
 		MpdStatus::State st = mpds.state;
 		m_mpdcli->next();
@@ -485,6 +565,24 @@ int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
 		case MpdStatus::MPDS_PAUSE: m_mpdcli->togglePause();break;
 		case MpdStatus::MPDS_STOP: m_mpdcli->stop();break;
 		}
+		sleepms(200);
+		const struct MpdStatus &mpds1 = m_mpdcli->getStatus();
+		transportUpdate("CurrentTrackURI", uri);
+		transportUpdate("AVTransportURI", uri);
+
+		transportUpdate("CurrentMediaDuration", upnpduration(mpds.songlenms));
+		transportUpdate("CurrentTrackDuration", upnpduration(mpds.songlenms));
+
+		transportUpdate("CurrentTrackMetaData", didlmake(mpds));
+		transportUpdate("AVTransportURIMetaData", didlmake(mpds));
+		transportUpdate("RelativeTimePosition", 
+						upnpduration(mpds.songelapsedms));
+		transportUpdate("AbsoluteTimePosition", 
+						upnpduration(mpds.songelapsedms));
+
+	} else {
+		transportUpdate("NextAVTransportURI", uri);
+		transportUpdate("NextAVTransportURIMetaData", "");
 	}
 
 	return UPNP_E_SUCCESS;
@@ -687,6 +785,24 @@ int UpMpd::seqcontrol(const SoapArgs& sc, SoapData& data, int what)
 	case 0: ok = m_mpdcli->next();break;
 	case 1: ok = m_mpdcli->previous();break;
 	}
+
+	sleepms(200);
+	const struct MpdStatus &mpds1 = m_mpdcli->getStatus();
+
+	string uri = mapget(mpds.currentsong, "uri");
+	transportUpdate("CurrentTrackURI", uri);
+	transportUpdate("AVTransportURI", uri);
+
+	transportUpdate("CurrentMediaDuration", upnpduration(mpds.songlenms));
+	transportUpdate("CurrentTrackDuration", upnpduration(mpds.songlenms));
+
+	transportUpdate("CurrentTrackMetaData", didlmake(mpds));
+	transportUpdate("AVTransportURIMetaData", didlmake(mpds));
+	transportUpdate("RelativeTimePosition", 
+					upnpduration(mpds.songelapsedms));
+	transportUpdate("AbsoluteTimePosition", 
+					upnpduration(mpds.songelapsedms));
+
 	return ok ? UPNP_E_SUCCESS : UPNP_E_INTERNAL_ERROR;
 }
 	
@@ -727,18 +843,7 @@ int UpMpd::setPlayMode(const SoapArgs& sc, SoapData& data)
 int UpMpd::getTransportSettings(const SoapArgs& sc, SoapData& data)
 {
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
-	string playmode = "NORMAL";
-    if (!mpds.rept && mpds.random && !mpds.single)
-		playmode = "SHUFFLE";
-	else if (mpds.rept && !mpds.random && mpds.single)
-		playmode = "REPEAT_ONE";
-	else if (mpds.rept && !mpds.random && !mpds.single)
-		playmode = "REPEAT_ALL";
-	else if (mpds.rept && mpds.random && !mpds.single)
-		playmode = "RANDOM";
-	else if (!mpds.rept && !mpds.random && mpds.single)
-		playmode = "DIRECT_1";
-
+	string playmode = mpdsToPlaymode(mpds);
 	data.data.push_back(pair<string,string>("PlayMode", playmode.c_str()));
 	data.data.push_back(pair<string,string>("RecQualityMode",
 											"NOT_IMPLEMENTED"));
@@ -857,8 +962,7 @@ int main(int argc, char *argv[])
 
 	UpMpd device(string("uuid:") + UUID, xmlfiles, &mpdcli);
 
-	while (true)
-		sleep(1000);
+	device.eventloop();
 	return 0;
 }
 

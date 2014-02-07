@@ -43,6 +43,7 @@ struct MpdStatus {
     // Current song info. The keys are didl-lite names (which can be
     // attribute or element names
     std::map<std::string, std::string> currentsong;
+    std::map<std::string, std::string> nextsong;
 };
 
 class MPDCli {
@@ -80,7 +81,7 @@ private:
 
     bool openconn();
     bool updStatus();
-    bool updSong();
+    bool updSong(std::map<std::string, std::string>& status, int pos = -1);
     bool showError(const std::string& who);
 };
 

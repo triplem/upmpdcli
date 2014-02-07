@@ -235,6 +235,16 @@ string didlmake(const MpdStatus& mpds)
 	return ss.str();
 }
 
+bool sleepms(int ms)
+{
+    struct timespec duration;
+    duration.tv_sec = ms/1000;
+    ms -= 1000 * duration.tv_sec;
+    duration.tv_nsec = ms * 1000 * 1000; 
+    if (nanosleep(&duration, 0))
+        return false;
+    return true;
+}
 
 // Tried on gcc + libstdc++ 4.7.2-5 on Debian, the c++11 regex package
 // does not seem really ready from prime time. So...:

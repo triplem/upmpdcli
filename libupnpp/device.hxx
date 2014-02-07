@@ -39,30 +39,23 @@ public:
                         const std::string& serviceType);
     void addActionMapping(const std::string& actName, soapfun fun);
 
-    /** To be overriden by the derived class.
+    /** To be implemented by the derived class.
         Called by the library when a control point subscribes, to
         retrieve eventable data. Return name/value pairs in the data array 
     */
-    virtual bool getEventData(const std::string& serviceid,
+    virtual bool getEventData(bool all, const std::string& serviceid,
                               std::vector<std::string>& names, 
-                              std::vector<std::string>& values)
-        {
-            return true;
-        }
+                              std::vector<std::string>& values) = 0;
 
     /** To be called by the device layer when data changes and an
         event should happen. */
     void notifyEvent(const std::string& serviceId,
                      const std::vector<std::string>& names, 
                      const std::vector<std::string>& values);
-
+    void eventloop();
     bool ok() {return m_lib != 0;}
 private:
     const std::string& serviceType(const std::string& serviceId);
-    std::string serviceKey(const std::string& UDN, const std::string& servId)
-        {
-            return UDN + "|" + servId;
-        }
             
     LibUPnP *m_lib;
     std::string m_deviceId;
