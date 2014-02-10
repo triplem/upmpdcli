@@ -2,7 +2,8 @@ Source: upmpdcli
 Section: unknown
 Priority: extra
 Maintainer: Jean-Francois Dockes <jf@dockes.org>
-Build-Depends: debhelper (>= 8.0.0), autotools-dev
+Build-Depends: debhelper (>= 8.0.0), autotools-dev, libmpdclient-dev, 
+               libupnp6-dev, libexpat1-dev
 Standards-Version: 3.9.3
 Homepage: http://www.lesbonscomptes.com/upmpdcli
 
