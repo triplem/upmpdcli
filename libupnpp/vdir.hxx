@@ -28,7 +28,7 @@
 #include <time.h>
 
 #include <string>
-#include <map>
+#include <unordered_map>
 
 class VirtualDir {
 public:
@@ -45,7 +45,9 @@ public:
 
 private:
 	VirtualDir() {}
-	std::map<std::string, std::map<std::string, FileEnt> > m_dirs;
+
+	std::unordered_map<std::string, std::unordered_map<std::string, FileEnt> > 
+	m_dirs;
 };
 
 

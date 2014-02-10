@@ -38,6 +38,8 @@ extern bool sleepms(int ms);
 
 // Format milliseconds into H+:MM:SS
 extern std::string upnpduration(int ms);
+// hms to seconds
+extern int upnpdurationtos(const string& dur);
 
 // Return mapvalue or null strings, for maps where absent entry and
 // null data are equivalent

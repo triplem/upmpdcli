@@ -48,12 +48,24 @@ public:
                               std::vector<std::string>& values) = 0;
 
     /** To be called by the device layer when data changes and an
-        event should happen. */
+     * event should happen. */
     void notifyEvent(const std::string& serviceId,
                      const std::vector<std::string>& names, 
                      const std::vector<std::string>& values);
+
+    /** This loop polls getEventData and generates an UPnP event if
+     * there is anything to broadcast. To be called by main() when
+     * done with initialization. */
     void eventloop();
+
+    /** Called from a callback to Wakeup the event loop early if we
+     * need to broadcast something quickly. Will only do something if
+     * the previous event is not too recent.
+     */
+    void loopWakeup(); // To trigger an early event
+
     bool ok() {return m_lib != 0;}
+
 private:
     const std::string& serviceType(const std::string& serviceId);
             

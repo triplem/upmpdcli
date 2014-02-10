@@ -20,8 +20,10 @@ using namespace std;
 #include "upnpplib.hxx"
 #include "vdir.hxx"
 #include "device.hxx"
+#include "log.hxx"
 
 unordered_map<std::string, UpnpDevice *> UpnpDevice::o_devices;
+
 static string xmlquote(const string& in)
 {
     string out;
@@ -38,7 +40,6 @@ static string xmlquote(const string& in)
     return out;
 }
 
-
 static bool vectorstoargslists(const vector<string>& names, 
                                const vector<string>& values,
                                vector<string>& qvalues,
@@ -46,7 +47,7 @@ static bool vectorstoargslists(const vector<string>& names,
                                vector<const char *>& cvalues)
 {
     if (names.size() != values.size()) {
-        cerr << "vectorstoargslists: bad sizes" << endl;
+        LOGERR("vectorstoargslists: bad sizes" << endl);
         return false;
     }
 
@@ -68,16 +69,16 @@ UpnpDevice::UpnpDevice(const string& deviceId,
                        const unordered_map<string, string>& xmlfiles)
     : m_deviceId(deviceId)
 {
-    cerr << "UpnpDevice::UpnpDevice(" << m_deviceId << ")" << endl;
+    //LOGDEB("UpnpDevice::UpnpDevice(" << m_deviceId << ")" << endl);
 
     m_lib = LibUPnP::getLibUPnP(true);
     if (!m_lib) {
-        cerr << " Can't get LibUPnP" << endl;
+        LOGFAT(" Can't get LibUPnP" << endl);
         return;
     }
     if (!m_lib->ok()) {
-        cerr << "Lib init failed: " <<
-            m_lib->errAsString("main", m_lib->getInitError()) << endl;
+        LOGFAT("Lib init failed: " <<
+               m_lib->errAsString("main", m_lib->getInitError()) << endl);
         m_lib = 0;
         return;
     }
@@ -91,15 +92,15 @@ UpnpDevice::UpnpDevice(const string& deviceId,
 
     VirtualDir* theVD = VirtualDir::getVirtualDir();
     if (theVD == 0) {
-        cerr << "UpnpDevice::UpnpDevice: can't get VirtualDir" << endl;
+        LOGFAT("UpnpDevice::UpnpDevice: can't get VirtualDir" << endl);
         return;
     }
 
     unordered_map<string,string>::const_iterator it = 
         xmlfiles.find("description.xml");
     if (it == xmlfiles.end()) {
-        cerr << "UpnpDevice::UpnpDevice: no description.xml found in xmlfiles"
-             << endl;
+        LOGFAT("UpnpDevice::UpnpDevice: no description.xml found in xmlfiles"
+               << endl);
         return;
     } 
 
@@ -115,10 +116,13 @@ UpnpDevice::UpnpDevice(const string& deviceId,
     o_devices[m_deviceId] = this;
 }
 
+static PTMutexInit cblock;
+
 // Main libupnp callback: use the device id and call the right device
 int UpnpDevice::sCallBack(Upnp_EventType et, void* evp, void* tok)
 {
-    //cerr << "UpnpDevice::sCallBack" << endl;
+    //LOGDEB("UpnpDevice::sCallBack" << endl);
+    PTMutexLocker lock(cblock);
 
     string deviceid;
     switch (et) {
@@ -135,10 +139,10 @@ int UpnpDevice::sCallBack(Upnp_EventType et, void* evp, void* tok)
     break;
 
     default:
-        cerr << "UpnpDevice::sCallBack: unknown event " << et << endl;
+        LOGERR("UpnpDevice::sCallBack: unknown event " << et << endl);
         return UPNP_E_INVALID_PARAM;
     }
-    // cerr << "UpnpDevice::sCallBack: deviceid[" << deviceid << "]" << endl;
+    // LOGDEB("UpnpDevice::sCallBack: deviceid[" << deviceid << "]" << endl);
 
     unordered_map<std::string, UpnpDevice *> *devmap = 
         (unordered_map<std::string, UpnpDevice *> *) tok;
@@ -146,33 +150,28 @@ int UpnpDevice::sCallBack(Upnp_EventType et, void* evp, void* tok)
         o_devices.find(deviceid);
 
     if (it == o_devices.end()) {
-        cerr << "UpnpDevice::sCallBack: Device not found: [" << 
-            deviceid << "]" << endl;
+        LOGERR("UpnpDevice::sCallBack: Device not found: [" << 
+               deviceid << "]" << endl);
         return UPNP_E_INVALID_PARAM;
     }
-    // cerr << "UpnpDevice::sCallBack: device found: [" << it->second 
-    // << "]" << endl;
+    // LOGDEB("UpnpDevice::sCallBack: device found: [" << it->second 
+    // << "]" << endl);
     return (it->second)->callBack(et, evp);
 }
 
-static PTMutexInit cblock;
 int UpnpDevice::callBack(Upnp_EventType et, void* evp)
 {
-    PTMutexLocker lock(cblock);
-    cerr << "UpnpDevice::callBack: evt type:" << 
-        LibUPnP::evTypeAsString(et).c_str() << endl;
-
     switch (et) {
     case UPNP_CONTROL_ACTION_REQUEST:
     {
         struct Upnp_Action_Request *act = (struct Upnp_Action_Request *)evp;
-        cerr << "UPNP_CONTROL_ACTION_REQUEST: " << act->ActionName <<
-            " Params: " << ixmlPrintDocument(act->ActionRequest) << endl;
+        LOGDEB("UPNP_CONTROL_ACTION_REQUEST: " << act->ActionName <<
+               ". Params: " << ixmlPrintDocument(act->ActionRequest) << endl);
 
         unordered_map<string, string>::const_iterator servit = 
             m_serviceTypes.find(act->ServiceID);
         if (servit == m_serviceTypes.end()) {
-            cerr << "Bad serviceID" << endl;
+            LOGERR("Bad serviceID" << endl);
             return UPNP_E_INVALID_PARAM;
         }
         const string& servicetype = servit->second;
@@ -180,13 +179,13 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
         unordered_map<string, soapfun>::iterator callit = 
             m_calls.find(act->ActionName);
         if (callit == m_calls.end()) {
-            cerr << "No such action: " << act->ActionName << endl;
+            LOGINF("No such action: " << act->ActionName << endl);
             return UPNP_E_INVALID_PARAM;
         }
 
         SoapArgs sc;
         if (!decodeSoapBody(act->ActionName, act->ActionRequest, &sc)) {
-            cerr << "Error decoding Action call arguments" << endl;
+            LOGERR("Error decoding Action call arguments" << endl);
             return UPNP_E_INVALID_PARAM;
         }
         SoapData dt;
@@ -196,17 +195,16 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
         // Call the action routine
         int ret = callit->second(sc, dt);
         if (ret != UPNP_E_SUCCESS) {
-            cerr << "Action failed: " << sc.name << endl;
+            LOGERR("Action failed: " << sc.name << endl);
             return ret;
         }
 
         // Encode result data
         act->ActionResult = buildSoapBody(dt);
-        cerr << "Response data: " << 
-            ixmlPrintDocument(act->ActionResult) << endl;
+        //LOGDEB("Response data: " << 
+        //   ixmlPrintDocument(act->ActionResult) << endl);
 
         return ret;
-
     }
     break;
 
@@ -216,7 +214,7 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
     {
         struct Upnp_State_Var_Request *act = 
             (struct Upnp_State_Var_Request *)evp;
-        cerr << "UPNP_CONTROL_GET_VAR__REQUEST?: " << act->StateVarName << endl;
+        LOGDEB("UPNP_CONTROL_GET_VAR__REQUEST?: " << act->StateVarName << endl);
     }
     break;
 
@@ -224,7 +222,7 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
     {
         struct Upnp_Subscription_Request *act = 
             (struct  Upnp_Subscription_Request*)evp;
-        cerr << "UPNP_EVENT_SUBSCRIPTION_REQUEST: " << act->ServiceId << endl;
+        LOGDEB("UPNP_EVENT_SUBSCRIPTION_REQUEST: " << act->ServiceId << endl);
 
         vector<string> names, values, qvalues;
         if (!getEventData(true, act->ServiceId, names, values)) {
@@ -237,8 +235,8 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
                                    &cnames[0], &cvalues[0],
                                    int(cnames.size()), act->Sid);
         if (ret != UPNP_E_SUCCESS) {
-            cerr << "UpnpDevice::callBack: UpnpAcceptSubscription failed: " 
-                 << ret << endl;
+            LOGERR("UpnpDevice::callBack: UpnpAcceptSubscription failed: " 
+                   << ret << endl);
         }
 
         return ret;
@@ -246,7 +244,8 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
     break;
 
     default:
-        cerr << "UpnpDevice::callBack: unknown op" << endl;
+        LOGINF("UpnpDevice::callBack: unknown libupnp event type: " <<
+               LibUPnP::evTypeAsString(et).c_str() << endl);
         return UPNP_E_INVALID_PARAM;
     }
     return UPNP_E_INVALID_PARAM;
@@ -255,14 +254,14 @@ int UpnpDevice::callBack(Upnp_EventType et, void* evp)
 void UpnpDevice::addServiceType(const std::string& serviceId, 
                                 const std::string& serviceType)
 {
-    cerr << "UpnpDevice::addServiceType: [" << 
-        serviceId << "] -> [" << serviceType << endl;
+    //LOGDEB("UpnpDevice::addServiceType: [" << 
+    //    serviceId << "] -> [" << serviceType << endl);
     m_serviceTypes[serviceId] = serviceType;
 }
 
 void UpnpDevice::addActionMapping(const std::string& actName, soapfun fun)
 {
-    // cerr << "UpnpDevice::addActionMapping:" << actName << endl;
+    // LOGDEB("UpnpDevice::addActionMapping:" << actName << endl);
     m_calls[actName] = fun;
 }
 
@@ -270,8 +269,10 @@ void UpnpDevice::notifyEvent(const string& serviceId,
                              const vector<string>& names, 
                              const vector<string>& values)
 {
-    cerr << "UpnpDevice::notifyEvent" << endl;
-
+    LOGDEB("UpnpDevice::notifyEvent: " 
+           << (names.empty()?"Empty names??":names[0]) << endl);
+    if (names.empty())
+        return;
     vector<const char *> cnames, cvalues;
     vector<string> qvalues;
     vectorstoargslists(names, values, qvalues, cnames, cvalues);
@@ -280,28 +281,95 @@ void UpnpDevice::notifyEvent(const string& serviceId,
                          serviceId.c_str(), &cnames[0], &cvalues[0],
                          int(cnames.size()));
     if (ret != UPNP_E_SUCCESS) {
-        cerr << "UpnpDevice::notifyEvent: UpnpNotify failed: " << ret << endl;
+        LOGERR("UpnpDevice::notifyEvent: UpnpNotify failed: " << ret << endl);
     }
 }
 
+static pthread_cond_t evloopcond = PTHREAD_COND_INITIALIZER;
+
+static void timespec_addnanos(struct timespec *ts, int nanos)
+{
+    ts->tv_nsec += nanos;
+    if (ts->tv_nsec > 1000 * 1000 * 1000) {
+        int secs = ts->tv_nsec / (1000 * 1000 * 1000);
+        ts->tv_sec += secs;
+        ts->tv_nsec -= secs * (1000 * 1000 * 1000);
+    } 
+}
+int timespec_diffms(const struct timespec& old, const struct timespec& recent)
+{
+    return (recent.tv_sec - old.tv_sec) * 1000 + 
+        (recent.tv_nsec - old.tv_nsec) / (1000 * 1000);
+}
+
+// Loop on services, and poll each for changed data. Generate event
+// only if changed data exists. Every 3 S we generate an artificial
+// event with all the current state.
 void UpnpDevice::eventloop()
 {
-    struct timespec duration;
-    duration.tv_sec = 0;
-    duration.tv_nsec = 500 * 1000 * 1000; // 1/2 S
-    while (nanosleep(&duration, 0) == 0) {
-        static int count = 0;
-        //cerr << "UpnpDevice::eventloop: " << count++ << endl;
+    int count = 0;
+    const int loopwait_ms = 500; // Polling mpd every 1/2 S
+    const int nloopstofull = 10; // Full state every 5 S
+    struct timespec wkuptime, earlytime;
+    bool didearly = false;
+
+    for (;;) {
+        clock_gettime(CLOCK_REALTIME, &wkuptime);
+        timespec_addnanos(&wkuptime, loopwait_ms * 1000 * 1000);
+
+        //LOGDEB("eventloop: now " << time(0) << " wkup at "<< 
+        //    wkuptime.tv_sec << " S " << wkuptime.tv_nsec << " ns" << endl);
+
         PTMutexLocker lock(cblock);
+        int err = pthread_cond_timedwait(&evloopcond, lock.getMutex(), 
+                                         &wkuptime);
+        if (err && err != ETIMEDOUT) {
+            LOGINF("UpnpDevice:eventloop: wait errno " << errno << endl);
+            break;
+        } else if (err == 0) {
+            // Early wakeup. Only does something if it did not already
+            // happen recently
+            if (didearly) {
+                int millis = timespec_diffms(earlytime, wkuptime);
+                if (millis < loopwait_ms) {
+                    // Do nothing. didearly stays true
+                    // LOGDEB("eventloop: early, previous too close "<<endl);
+                    continue;
+                } else {
+                    // had an early wakeup previously, but it was a
+                    // long time ago. Update state and wakeup
+                    // LOGDEB("eventloop: early, previous is old "<<endl);
+                    earlytime = wkuptime;
+                }
+            } else {
+                // Early wakeup, previous one was normal. Remember.
+                // LOGDEB("eventloop: early, no previous" << endl);
+                didearly = true;
+                earlytime = wkuptime;
+            }
+        } else {
+            // Normal wakeup
+            // LOGDEB("eventloop: normal wakeup" << endl);
+            didearly = false;
+        }
+
+        count++;
+        bool all = count && ((count % nloopstofull) == 0);
+        //LOGDEB("UpnpDevice::eventloop count "<<count<<" all "<<all<<endl);
+
         for (unordered_map<string, string>::const_iterator it = 
-                 m_serviceTypes.begin();
-             it != m_serviceTypes.end(); it++) {
+                 m_serviceTypes.begin(); it != m_serviceTypes.end(); it++) {
             vector<string> names, values;
-            if (!getEventData(false, it->first, names, values) || 
-                names.empty()) {
+            if (!getEventData(all, it->first, names, values) || names.empty()) {
                 continue;
             }
             notifyEvent(it->first, names, values);
         }
     }
 }
+
+void UpnpDevice::loopWakeup()
+{
+    pthread_cond_broadcast(&evloopcond);
+}
+

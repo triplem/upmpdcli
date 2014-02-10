@@ -23,40 +23,24 @@
 #include <sstream>
 #include <vector>
 #include <functional>
-//#include <regex>
-
+#include <set>
 using namespace std;
 using namespace std::placeholders;
 
 #include "libupnpp/upnpplib.hxx"
 #include "libupnpp/soaphelp.hxx"
 #include "libupnpp/device.hxx"
+#include "libupnpp/log.hxx"
 
 #include "mpdcli.hxx"
 #include "upmpdutils.hxx"
 
 static const string friendlyName("UpMpd");
 
-static string mpdsToPlaymode(const struct MpdStatus& mpds)
-{
-	string playmode = "NORMAL";
-    if (!mpds.rept && mpds.random && !mpds.single)
-		playmode = "SHUFFLE";
-	else if (mpds.rept && !mpds.random && mpds.single)
-		playmode = "REPEAT_ONE";
-	else if (mpds.rept && !mpds.random && !mpds.single)
-		playmode = "REPEAT_ALL";
-	else if (mpds.rept && mpds.random && !mpds.single)
-		playmode = "RANDOM";
-	else if (!mpds.rept && !mpds.random && mpds.single)
-		playmode = "DIRECT_1";
-	return playmode;
-}
-
+// The UPnP MPD frontend device with its 2 services
 class UpMpd : public UpnpDevice {
 public:
-	UpMpd(const string& deviceid, 
-		  const unordered_map<string, string>& xmlfiles,
+	UpMpd(const string& deviceid, const unordered_map<string, string>& xmlfiles,
 		  MPDCli *mpdcli);
 
 	// RenderingControl
@@ -94,15 +78,25 @@ public:
 
 private:
 	MPDCli *m_mpdcli;
+	// State variable storage
 	unordered_map<string, string> m_rdupdates;
 	unordered_map<string, string> m_tpstate;
 
-	void renderingUpdate(const string& nm, const string& val)
-		{
-			m_rdupdates[nm] = val;
-		}
-	bool tpstateMToU(unordered_map<string, string>& state);
+	// My track identifiers (for cleaning up)
+	set<int> m_songids;
 
+	// The two services use different methods for recording changed
+	// state: The RenderingControl actions record changes one at a
+	// time while the AVTransport recomputes the whole state by
+	// querying MPD and runs a diff with the previous state
+
+	// Record RenderingControl state change
+	void renderingUpdate(const string& nm, const string& val) {
+		m_rdupdates[nm] = val;
+	}
+
+	// Translate MPD state to AVTransport state variables.
+	bool tpstateMToU(unordered_map<string, string>& state);
 };
 
 static const string serviceIdRender("urn:upnp-org:serviceId:RenderingControl");
@@ -182,9 +176,9 @@ UpMpd::UpMpd(const string& deviceid,
 	{	auto bound = bind(&UpMpd::playcontrol, this, _1, _2, 2);
 		addActionMapping("Pause", bound);
 	}
-//	{	auto bound = bind(&UpMpd::seek, this, _1, _2);
-//		addActionMapping("Seek", bound);
-//	}
+	{	auto bound = bind(&UpMpd::seek, this, _1, _2);
+		addActionMapping("Seek", bound);
+	}
 	{	auto bound = bind(&UpMpd::seqcontrol, this, _1, _2, 0);
 		addActionMapping("Next", bound);
 	}
@@ -193,7 +187,15 @@ UpMpd::UpMpd(const string& deviceid,
 	}
 }
 
-
+// This is called at regular intervals by the polling loop to retrieve
+// changed state variables for each of the services (the list of
+// services was defined in the base class by the "addServiceTypes()"
+// calls during construction). 
+//
+// We might add a method for triggering an event from the action
+// methods after changing state, which would really act only if the
+// interval with the previous event is long enough. But things seem to
+// work ok with the systematic delay.
 bool UpMpd::getEventData(bool all, const string& serviceid, 
 						 std::vector<std::string>& names, 
 						 std::vector<std::string>& values)
@@ -203,7 +205,7 @@ bool UpMpd::getEventData(bool all, const string& serviceid,
 	} else if (!serviceid.compare(serviceIdTransport)) {
 		return getEventDataTransport(all, names, values);
 	} else {
-		cerr << "UpMpd::getEventData: servid? [" << serviceid << "]" << endl;
+		LOGERR("UpMpd::getEventData: servid? [" << serviceid << "]" << endl);
 		return UPNP_E_INVALID_PARAM;
 	}
 }
@@ -260,9 +262,24 @@ bool UpMpd::getEventDataRendering(bool all, std::vector<std::string>& names,
 
 	values.push_back(chgdata);
 	m_rdupdates.clear();
-	cerr << "UpMpd::getEventDataRendering: " << chgdata << endl;
 	return true;
 }
+
+// Actions:
+// Note: we need to return all out arguments defined by the SOAP call even if
+// they don't make sense (because there is no song playing). Ref upnp arch p.51:
+//
+//   argumentName: Required if and only if action has out
+//   arguments. Value returned from action. Repeat once for each out
+//   argument. If action has an argument marked as retval, this
+//   argument must be the first element. (Element name not qualified
+//   by a namespace; element nesting context is sufficient.) Case
+//   sensitive. Single data type as defined by UPnP service
+//   description. Every “out” argument in the definition of the action
+//   in the service description must be included, in the same order as
+//   specified in the service description (SCPD) available from the
+//   device.
+
 
 int UpMpd::getVolumeDBRange(const SoapArgs& sc, SoapData& data)
 {
@@ -301,6 +318,7 @@ int UpMpd::setMute(const SoapArgs& sc, SoapData& data)
 	} else {
 		return UPNP_E_INVALID_PARAM;
 	}
+	loopWakeup();
 	return UPNP_E_SUCCESS;
 }
 
@@ -345,6 +363,7 @@ int UpMpd::setVolume(const SoapArgs& sc, SoapData& data, bool isDb)
 	sprintf(cvalue, "%d", percentodbvalue(volume));
 	renderingUpdate("VolumeDB", cvalue);
 
+	loopWakeup();
 	return UPNP_E_SUCCESS;
 }
 
@@ -400,42 +419,64 @@ int UpMpd::selectPreset(const SoapArgs& sc, SoapData& data)
 
 ///////////////// AVTransport methods
 
+// Translate MPD mode flags to UPnP Play mode
+static string mpdsToPlaymode(const struct MpdStatus& mpds)
+{
+	string playmode = "NORMAL";
+    if (!mpds.rept && mpds.random && !mpds.single)
+		playmode = "SHUFFLE";
+	else if (mpds.rept && !mpds.random && mpds.single)
+		playmode = "REPEAT_ONE";
+	else if (mpds.rept && !mpds.random && !mpds.single)
+		playmode = "REPEAT_ALL";
+	else if (mpds.rept && mpds.random && !mpds.single)
+		playmode = "RANDOM";
+	else if (!mpds.rept && !mpds.random && mpds.single)
+		playmode = "DIRECT_1";
+	return playmode;
+}
+
+// AVTransport eventing
+// 
 // Some state variables do not generate events and must be polled by
 // the control point: RelativeTimePosition AbsoluteTimePosition
 // RelativeCounterPosition AbsoluteCounterPosition.
 // This leaves us with:
-//    *TransportState
-//    *TransportStatus
-//    *PlaybackStorageMedium
-//    *PossiblePlaybackStorageMedia
-//    *RecordStorageMedium
-//    *PossibleRecordStorageMedia
-//    *CurrentPlayMode
-//    *TransportPlaySpeed
-//    *RecordMediumWriteStatus
-//    *CurrentRecordQualityMode
-//    *PossibleRecordQualityModes
-//    *NumberOfTracks
-//    *CurrentTrack
-//    *CurrentTrackDuration
-//    *CurrentMediaDuration
-//    *CurrentTrackMetaData
-//    *CurrentTrackURI
-//    *AVTransportURI
-//    *AVTransportURIMetaData
-//    *NextAVTransportURI
-//    *NextAVTransportURIMetaData
-//    *RelativeTimePosition
-//    *AbsoluteTimePosition
-//    *RelativeCounterPosition
-//    *AbsoluteCounterPosition
-//    *CurrentTransportActions
+//    TransportState
+//    TransportStatus
+//    PlaybackStorageMedium
+//    PossiblePlaybackStorageMedia
+//    RecordStorageMedium
+//    PossibleRecordStorageMedia
+//    CurrentPlayMode
+//    TransportPlaySpeed
+//    RecordMediumWriteStatus
+//    CurrentRecordQualityMode
+//    PossibleRecordQualityModes
+//    NumberOfTracks
+//    CurrentTrack
+//    CurrentTrackDuration
+//    CurrentMediaDuration
+//    CurrentTrackMetaData
+//    CurrentTrackURI
+//    AVTransportURI
+//    AVTransportURIMetaData
+//    NextAVTransportURI
+//    NextAVTransportURIMetaData
+//    RelativeTimePosition
+//    AbsoluteTimePosition
+//    RelativeCounterPosition
+//    AbsoluteCounterPosition
+//    CurrentTransportActions
 //
 // To be all bundled inside:    LastChange
 
+// Translate MPD state to UPnP AVTRansport state variables
 bool UpMpd::tpstateMToU(unordered_map<string, string>& status)
 {
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
+	//DEBOUT << "UpMpd::tpstateMToU: curpos: " << mpds.songpos <<
+	//   " qlen " << mpds.qlen << endl;
 	bool is_song = (mpds.state == MpdStatus::MPDS_PLAY) || 
 		(mpds.state == MpdStatus::MPDS_PAUSE);
 
@@ -516,7 +557,8 @@ bool UpMpd::getEventDataTransport(bool all, std::vector<std::string>& names,
 
 		if (it->first.compare("RelativeTimePosition") && 
 			it->first.compare("AbsoluteTimePosition")) {
-			cerr << "Transport state update for " << it->first << endl;
+			//DEBOUT << "Transport state update for " << it->first << 
+			// " oldvalue [" << oldvalue << "] -> [" << it->second << endl;
 			changefound = true;
 		}
 
@@ -529,7 +571,7 @@ bool UpMpd::getEventDataTransport(bool all, std::vector<std::string>& names,
 	chgdata += "</InstanceID>\n</Event>\n";
 
 	if (!changefound) {
-		// cerr << "UpMpd::getEventDataTransport: no updates" << endl;
+		// DEBOUT << "UpMpd::getEventDataTransport: no updates" << endl;
 		return true;
 	}
 
@@ -537,16 +579,13 @@ bool UpMpd::getEventDataTransport(bool all, std::vector<std::string>& names,
 	values.push_back(chgdata);
 
 	m_tpstate = newtpstate;
-	cerr << "UpMpd::getEventDataTransport: " << chgdata << endl;
+	// DEBOUT << "UpMpd::getEventDataTransport: " << chgdata << endl;
 	return true;
 }
-
 
 // http://192.168.4.4:8200/MediaItems/246.mp3
 int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
 {
-	cerr << "UpMpd::setAVTransportURI(" << setnext << ") " << endl;
-
 	map<string, string>::const_iterator it;
 		
 	it = setnext? sc.args.find("NextURI") : sc.args.find("CurrentURI");
@@ -564,45 +603,64 @@ int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
 	bool is_song = (mpds.state == MpdStatus::MPDS_PLAY) || 
 		(mpds.state == MpdStatus::MPDS_PAUSE);
 	int curpos = mpds.songpos;
+	LOGDEB("UpMpd::set" << (setnext?"Next":"") << 
+		   "AVTransportURI: curpos: " <<
+		   curpos << " is_song " << is_song << " qlen " << mpds.qlen << endl);
 
-	if (curpos == -1 && setnext) {
-		cerr << "setNextAVTRansportURI invoked but no current!" << endl;
+	// curpos == -1 means that the playlist was cleared or we just started. A
+	// play will use position 0, so it's actually equivalent to curpos == 0
+	if (curpos == -1)
+		curpos = 0;
+
+	if (mpds.qlen == 0 && setnext) {
+		LOGDEB("setNextAVTRansportURI invoked but empty queue!" << endl);
 		return UPNP_E_INVALID_PARAM;
 	}
-
-	if (m_mpdcli->insert(uri, curpos+1) < 0) {
+	int songid;
+	if ((songid = m_mpdcli->insert(uri, setnext?curpos+1:curpos)) < 0) {
 		return UPNP_E_INTERNAL_ERROR;
 	}
 	if (!setnext) {
 		MpdStatus::State st = mpds.state;
-		m_mpdcli->next();
+		// Have to tell mpd which track to play, else it will keep on
+		// the previous despite of the insertion. The UPnP docs say
+		// that setAVTransportURI should not change the transport
+		// state (pause/stop stay pause/stop) but it seems that some clients
+		// expect that the track will start playing so we let it play. 
+		// Needs to be revisited after seeing more clients. For now try to 
+		// preserve state as per standard.
+		// Audionet: issues a Play
+		// BubbleUpnp: issues a Play
+		// MediaHouse: no setnext, Play
+		m_mpdcli->play(curpos);
+#if 1 || defined(upmpd_do_restore_play_state_after_add)
 		switch (st) {
-		case MpdStatus::MPDS_PAUSE: m_mpdcli->togglePause();break;
-		case MpdStatus::MPDS_STOP: m_mpdcli->stop();break;
+		case MpdStatus::MPDS_PAUSE: m_mpdcli->togglePause(); break;
+		case MpdStatus::MPDS_STOP: m_mpdcli->stop(); break;
 		}
+#endif
+		// Clean up old song ids
+		for (set<int>::iterator it = m_songids.begin();
+			 it != m_songids.end(); it++) {
+			// Can't just delete here. If the id does not exist, MPD 
+			// gets into an apparently permanent error state, where even 
+			// get_status does not work
+			if (m_mpdcli->statId(*it)) {
+				m_mpdcli->deleteId(*it);
+			}
+		}
+		m_songids.clear();
 	}
 
+	m_songids.insert(songid);
+	loopWakeup();
 	return UPNP_E_SUCCESS;
 }
-
-// Note: we need to return all out arguments defined by the SOAP call even if
-// they don't make sense (because there is no song playing). Ref upnp arch p.51:
-//
-//   argumentName: Required if and only if action has out
-//   arguments. Value returned from action. Repeat once for each out
-//   argument. If action has an argument marked as retval, this
-//   argument must be the first element. (Element name not qualified
-//   by a namespace; element nesting context is sufficient.) Case
-//   sensitive. Single data type as defined by UPnP service
-//   description. Every “out” argument in the definition of the action
-//   in the service description must be included, in the same order as
-//   specified in the service description (SCPD) available from the
-//   device.
 
 int UpMpd::getPositionInfo(const SoapArgs& sc, SoapData& data)
 {
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
-	cerr << "UpMpd::getPositionInfo. State: " << mpds.state << endl;
+	LOGDEB("UpMpd::getPositionInfo. State: " << mpds.state << endl);
 
 	bool is_song = (mpds.state == MpdStatus::MPDS_PLAY) || 
 		(mpds.state == MpdStatus::MPDS_PAUSE);
@@ -624,7 +682,6 @@ int UpMpd::getPositionInfo(const SoapArgs& sc, SoapData& data)
 	} else {
 		data.addarg("TrackMetaData", "");
 	}
-
 
 	const string& uri = mapget(mpds.currentsong, "uri");
 	if (is_song && !uri.empty()) {
@@ -652,7 +709,7 @@ int UpMpd::getPositionInfo(const SoapArgs& sc, SoapData& data)
 int UpMpd::getTransportInfo(const SoapArgs& sc, SoapData& data)
 {
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
-	cerr << "UpMpd::getTransportInfo. State: " << mpds.state << endl;
+	LOGDEB("UpMpd::getTransportInfo. State: " << mpds.state << endl);
 
 	string tstate("STOPPED");
 	switch(mpds.state) {
@@ -674,11 +731,10 @@ int UpMpd::getDeviceCapabilities(const SoapArgs& sc, SoapData& data)
 	return UPNP_E_SUCCESS;
 }
 
-
 int UpMpd::getMediaInfo(const SoapArgs& sc, SoapData& data)
 {
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
-	cerr << "UpMpd::getMediaInfo. State: " << mpds.state << endl;
+	LOGDEB("UpMpd::getMediaInfo. State: " << mpds.state << endl);
 
 	bool is_song = (mpds.state == MpdStatus::MPDS_PLAY) || 
 		(mpds.state == MpdStatus::MPDS_PAUSE);
@@ -713,13 +769,13 @@ int UpMpd::getMediaInfo(const SoapArgs& sc, SoapData& data)
 	return UPNP_E_SUCCESS;
 }
 
-
 int UpMpd::playcontrol(const SoapArgs& sc, SoapData& data, int what)
 {
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
-	cerr << "UpMpd::playcontrol State: " << mpds.state << " what "<<what<< endl;
+	LOGDEB("UpMpd::playcontrol State: " << mpds.state <<" what "<<what<< endl);
+
 	if ((what & ~0x3)) {
-		cerr << "UpMPd::playcontrol: bad control " << what << endl;
+		LOGERR("UpMPd::playcontrol: bad control " << what << endl);
 		return UPNP_E_INVALID_PARAM;
 	}
 
@@ -749,16 +805,17 @@ int UpMpd::playcontrol(const SoapArgs& sc, SoapData& data, int what)
 		break;
 	}
 	
+	loopWakeup();
 	return ok ? UPNP_E_SUCCESS : UPNP_E_INTERNAL_ERROR;
 }
-
 
 int UpMpd::seqcontrol(const SoapArgs& sc, SoapData& data, int what)
 {
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
-	cerr << "UpMpd::seqcontrol State: " << mpds.state << " what "<<what<< endl;
+	LOGDEB("UpMpd::seqcontrol State: " << mpds.state << " what "<<what<< endl);
+
 	if ((what & ~0x1)) {
-		cerr << "UpMPd::seqcontrol: bad control " << what << endl;
+		LOGERR("UpMPd::seqcontrol: bad control " << what << endl);
 		return UPNP_E_INVALID_PARAM;
 	}
 
@@ -773,6 +830,7 @@ int UpMpd::seqcontrol(const SoapArgs& sc, SoapData& data, int what)
 
 	string uri = mapget(mpds.currentsong, "uri");
 
+	loopWakeup();
 	return ok ? UPNP_E_SUCCESS : UPNP_E_INTERNAL_ERROR;
 }
 	
@@ -807,6 +865,7 @@ int UpMpd::setPlayMode(const SoapArgs& sc, SoapData& data)
 	} else {
 		return UPNP_E_INVALID_PARAM;
 	}
+	loopWakeup();
 	return ok ? UPNP_E_SUCCESS : UPNP_E_INTERNAL_ERROR;
 }
 
@@ -837,7 +896,6 @@ int UpMpd::getCurrentTransportActions(const SoapArgs& sc, SoapData& data)
 	return UPNP_E_SUCCESS;
 }
 
-// Not implemented for now
 int UpMpd::seek(const SoapArgs& sc, SoapData& data)
 {
 	map<string, string>::const_iterator it;
@@ -854,12 +912,40 @@ int UpMpd::seek(const SoapArgs& sc, SoapData& data)
 	}
 	string target(it->second);
 
-	return UPNP_E_SUCCESS;
+	// LOGDEB("UpMpd::seek: unit " << unit << " target " << target);
+
+	const struct MpdStatus &mpds = m_mpdcli->getStatus();
+	int abs_seconds;
+	if (!unit.compare("ABS_TIME")) {
+		abs_seconds = upnpdurationtos(target);
+	} else 	if (!unit.compare("REL_TIME")) {
+		abs_seconds = mpds.songelapsedms / 1000;
+		abs_seconds += upnpdurationtos(target);
+//	} else 	if (!unit.compare("TRACK_NR")) {
+	} else {
+		return UPNP_E_INVALID_PARAM;
+	}
+
+	loopWakeup();
+	return m_mpdcli->seek(abs_seconds) ? UPNP_E_SUCCESS : UPNP_E_INTERNAL_ERROR;
 }
 
+
+/////////////////////////////////////////////////////////////////////
+// Main program
 static char *thisprog;
-static char usage [] =
-			"  \n\n"
+
+static int op_flags;
+#define OPT_MOINS 0x1
+#define OPT_h	  0x2
+#define OPT_p	  0x4
+#define OPT_d	  0x8
+
+static const char usage[] = 
+"-h host    \t specify host MPD is running on\n"
+"-i port     \t specify MPD port\n"
+"-d logfilename\t debug messages to\n"
+"  \n\n"
 			;
 static void
 Usage(void)
@@ -867,16 +953,41 @@ Usage(void)
 	fprintf(stderr, "%s: usage:\n%s", thisprog, usage);
 	exit(1);
 }
-static int	   op_flags;
-#define OPT_MOINS 0x1
 
 static string myDeviceUUID;
 
 static string datadir("upmpd/");
+
 int main(int argc, char *argv[])
 {
+	string mpdhost("localhost");
+	int mpdport = 6600;
+	string upnplogfilename("/tmp/upmpd_libupnp.log");
+
+	const char *cp;
+	if (cp = getenv("UPMPD_HOST"))
+		mpdhost = cp;
+	if (cp = getenv("UPMPD_PORT"))
+		mpdport = atoi(cp);
+
 	thisprog = argv[0];
 	argc--; argv++;
+	while (argc > 0 && **argv == '-') {
+		(*argv)++;
+		if (!(**argv))
+			Usage();
+		while (**argv)
+			switch (*(*argv)++) {
+			case 'h':	op_flags |= OPT_h; if (argc < 2)  Usage();
+				mpdhost = *(++argv); argc--;
+				goto b1;
+			case 'p':	op_flags |= OPT_p; if (argc < 2)  Usage();
+				mpdport = atoi(*(++argv)); argc--;
+				goto b1;
+			default: Usage();	break;
+			}
+	b1: argc--; argv++;
+	}
 
 	if (argc != 0)
 		Usage();
@@ -884,20 +995,20 @@ int main(int argc, char *argv[])
 	// Initialize libupnpp, and check health
 	LibUPnP *mylib = LibUPnP::getLibUPnP(true);
 	if (!mylib) {
-		cerr << " Can't get LibUPnP" << endl;
+		LOGFAT(" Can't get LibUPnP" << endl);
 		return 1;
 	}
 	if (!mylib->ok()) {
-		cerr << "Lib init failed: " <<
-			mylib->errAsString("main", mylib->getInitError()) << endl;
+		LOGFAT("Lib init failed: " <<
+			   mylib->errAsString("main", mylib->getInitError()) << endl);
 		return 1;
 	}
-	mylib->setLogFileName("/tmp/clilibupnp.log");
+	// mylib->setLogFileName(upnplogfilename);
 
 	// Initialize MPD client module
-	MPDCli mpdcli("hm1.dockes.com");
+	MPDCli mpdcli(mpdhost, mpdport);
 	if (!mpdcli.ok()) {
-		cerr << "MPD connection failed" << endl;
+		LOGFAT("MPD connection failed" << endl);
 		return 1;
 	}
 	
@@ -905,13 +1016,12 @@ int main(int argc, char *argv[])
 	string UUID = LibUPnP::makeDevUUID(friendlyName);
 
 	// Read our XML data.
-	
 	string reason;
 
 	string description;
 	string filename = datadir + "description.xml";
 	if (!file_to_string(filename, description, &reason)) {
-		cerr << "Failed reading " << filename << " : " << reason << endl;
+		LOGFAT("Failed reading " << filename << " : " << reason << endl);
 		return 1;
 	}
 	// Update device description with UUID
@@ -920,13 +1030,13 @@ int main(int argc, char *argv[])
 	string rdc_scdp;
 	filename = datadir + "RenderingControl.xml";
 	if (!file_to_string(filename, rdc_scdp, &reason)) {
-		cerr << "Failed reading " << filename << " : " << reason << endl;
+		LOGFAT("Failed reading " << filename << " : " << reason << endl);
 		return 1;
 	}
 	string avt_scdp;
 	filename = datadir + "AVTransport.xml";
 	if (!file_to_string(filename, avt_scdp, &reason)) {
-		cerr << "Failed reading " << filename << " : " << reason << endl;
+		LOGFAT("Failed reading " << filename << " : " << reason << endl);
 		return 1;
 	}
 
@@ -937,10 +1047,13 @@ int main(int argc, char *argv[])
 	xmlfiles["AVTransport.xml"] = avt_scdp;
 
 	// Initialize the UPnP device object.
-
 	UpMpd device(string("uuid:") + UUID, xmlfiles, &mpdcli);
 
+	LOGDEB("Entering event loop" << endl);
+
+	// And forever generate state change events.
 	device.eventloop();
+
 	return 0;
 }
 

@@ -55,14 +55,17 @@ public:
     bool setVolume(int ivol, bool relative = false);
     int  getVolume();
     bool togglePause();
-    bool play();
+    bool play(int pos = -1);
     bool stop();
     bool next();
     bool previous();
     bool repeat(bool on);
     bool random(bool on);
     bool single(bool on);
+    bool seek(int seconds);
     int insert(const std::string& uri, int pos);
+    bool deleteId(int id);
+    bool statId(int id);
     int curpos();
     const struct MpdStatus& getStatus()
     {

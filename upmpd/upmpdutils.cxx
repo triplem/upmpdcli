@@ -33,6 +33,7 @@ using namespace std;
 #include "mpdcli.hxx"
 #include "upmpdutils.hxx"
 
+// Append system error string to input string
 void catstrerror(string *reason, const char *what, int _errno)
 {
     if (!reason)
@@ -102,7 +103,7 @@ bool file_to_string(const string &fn, string &data, string *reason)
     }
 
     ret = true;
- out:
+out:
     if (fd >= 0)
 	close(fd);
     return ret;
@@ -124,8 +125,9 @@ string xmlquote(const string& in)
     return out;
 }
 
-// We do db upnp-encoded values from -10240 (0%) to 0 (100%)
- int percentodbvalue(int value)
+// Translate 0-100% MPD volume to UPnP VolumeDB: we do db upnp-encoded
+// values from -10240 (0%) to 0 (100%)
+int percentodbvalue(int value)
 {
     int dbvalue;
     if (value == 0) {
@@ -137,18 +139,18 @@ string xmlquote(const string& in)
     }
     return dbvalue;
 }
-
- int dbvaluetopercent(int dbvalue)
+// Translate VolumeDB to MPD 0-100
+int dbvaluetopercent(int dbvalue)
 {
     float db = float(dbvalue) / 256.0;
     float vol = exp10(db/10);
     int percent = floor(sqrt(vol * 10000.0));
-	if (percent < 0)	percent = 0;
-	if (percent > 100)	percent = 100;
+    if (percent < 0)	percent = 0;
+    if (percent > 100)	percent = 100;
     return percent;
 }
-
- string upnpduration(int ms)
+// Format duration in milliseconds into UPnP duration format
+string upnpduration(int ms)
 {
     int hours = ms / (3600 * 1000);
     ms -= hours * 3600 * 1000;
@@ -158,14 +160,24 @@ string xmlquote(const string& in)
     ms -= secs * 1000;
 
     char cbuf[100];
-	// This is the format from the ref doc, but it appears that the
-	// decimal part in the seconds field is an issue with some control
-	// points
-//    sprintf(cbuf, "%d:%02d:%02d.%03d", hours, minutes, secs, ms);
+
+    // This is the format from the ref doc, but it appears that the
+    // decimal part in the seconds field is an issue with some control
+    // points. So drop it...
+    //  sprintf(cbuf, "%d:%02d:%02d.%03d", hours, minutes, secs, ms);
     sprintf(cbuf, "%d:%02d:%02d", hours, minutes, secs);
     return cbuf;
 }
 
+int upnpdurationtos(const string& dur)
+{
+    int hours, minutes, seconds;
+    sscanf(dur.c_str(), "%d:%d:%d", &hours, &minutes, &seconds);
+    return 3600 * hours + 60 * minutes + seconds;
+}
+
+// Get from ssl unordered_map, return empty string for non-existing key (so this
+// only works for data where this makes sense.
 const string& mapget(const unordered_map<string, string>& im, const string& k)
 {
     static string ns;// null string
@@ -225,9 +237,12 @@ string didlmake(const MpdStatus& mpds, bool next)
 
     // TBD: the res element normally has size, sampleFrequency,
     // nrAudioChannels and protocolInfo attributes, which are bogus
-    // for the moment. And mostly everything is bogus if next is set...
+    // for the moment. And mostly everything is bogus if next is
+    // set...  Bitrate keeps changing for VBRs and forces
+    // events. Keeping it out for now
+
     ss << "<res " << "duration=\"" << upnpduration(mpds.songlenms) << "\" "
-       << "bitrate=\"" << mpds.kbrate << "\" "
+//       << "bitrate=\"" << mpds.kbrate << "\" "
        << "sampleFrequency=\"44100\" audioChannels=\"2\" "
        << "protocolInfo=\"http-get:*:audio/mpeg:DLNA.ORG_PN=MP3;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000\""
        << ">"
@@ -248,8 +263,10 @@ bool sleepms(int ms)
     return true;
 }
 
-// Tried on gcc + libstdc++ 4.7.2-5 on Debian, the c++11 regex package
-// does not seem really ready from prime time. So...:
+// Substitute regular expression
+// The c++11 regex package does not seem really ready from prime time
+// (Tried on gcc + libstdc++ 4.7.2-5 on Debian, with little
+// joy). So...:
 string regsub1(const string& sexp, const string& input, const string& repl)
 {
     regex_t expr;
@@ -261,20 +278,20 @@ string regsub1(const string& sexp, const string& input, const string& repl)
     if ((err = regcomp(&expr, sexp.c_str(), REG_EXTENDED))) {
         regerror(err, &expr, errbuf, ERRSIZE);
         cerr << "upmpd: regsub1: regcomp() failed: " << errbuf << endl;
-		return string();
+        return string();
     }
     
     if ((err = regexec(&expr, input.c_str(), 10, pmatch, 0))) {
         regerror(err, &expr, errbuf, ERRSIZE);
         cerr << "upmpd: regsub1: regcomp() failed: " <<  errbuf << endl;
-		return string();
+        return string();
     }
-	if (pmatch[0].rm_so == -1) {
-		// No match
-		return input;
-	}
-	string out = input.substr(0, pmatch[0].rm_so);
-	out += repl;
-	out += input.substr(pmatch[0].rm_eo);
+    if (pmatch[0].rm_so == -1) {
+        // No match
+        return input;
+    }
+    string out = input.substr(0, pmatch[0].rm_so);
+    out += repl;
+    out += input.substr(pmatch[0].rm_eo);
     return out;
 }

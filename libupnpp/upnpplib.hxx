@@ -42,13 +42,13 @@ public:
 	 */
 	static LibUPnP* getLibUPnP(bool server = false);
 
-	int setupWebServer(const std::string& description);
-
 	/** Set log file name and activate logging.
 	 *
 	 * @param fn file name to use. Use empty string to turn logging off
 	 */
-	bool setLogFileName(const std::string& fn);
+	enum LogLevel {LogLevelNone, LogLevelError, LogLevelDebug};
+	bool setLogFileName(const std::string& fn, LogLevel level = LogLevelError);
+	bool setLogLevel(LogLevel level);
 
 	/** Set max library buffer size for reading content from servers. */
 	void setMaxContentLength(int bytes);
@@ -65,21 +65,29 @@ public:
 		return m_init_error;
 	}
 
-	/** Specify function to be called on given UPnP event. This will happen
-	 * in the libupnp thread context.
-	 */
-	void registerHandler(Upnp_EventType et, Upnp_FunPtr handler, void *cookie);
-
 	/** Build a unique persistent UUID for a root device. This uses a hash
 		of the input name (e.g.: friendlyName), and the host Ethernet address */
 	static std::string makeDevUUID(const std::string& name);
 
-	/** Translate integer error code (UPNP_E_XXX) to string */
+	/** Translate libupnp integer error code (UPNP_E_XXX) to string */
 	static std::string errAsString(const std::string& who, int code);
 
+/////////////////////////////////////////////////////////////////////////////
+	/* The methods which follow are normally for use by the 
+	 * intermediate layers in libupnpp, such as the base device class
+	 * or the server directory, end-user code should not need them in
+	 * general.
+	 */
+
+	/** Specify function to be called on given UPnP event. This will happen
+	 * in the libupnp thread context. 
+	 */
+	void registerHandler(Upnp_EventType et, Upnp_FunPtr handler, void *cookie);
+
+	/** Translate libupnp event type as string */
 	static std::string evTypeAsString(Upnp_EventType);
 
-
+	int setupWebServer(const std::string& description);
 
 	UpnpClient_Handle getclh()
 	{

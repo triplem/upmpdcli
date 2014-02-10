@@ -38,6 +38,10 @@ extern "C" {
 #include "getsyshwaddr.h"
 }
 #include "md5.hxx"
+#include "log.hxx"
+
+// Level for the local log, not libupnp's
+int upnppdebug::loglevel = LLDEB;
 
 static LibUPnP *theLib;
 
@@ -63,7 +67,7 @@ LibUPnP::LibUPnP(bool server)
 #ifdef DEBUG
 	const char *ip_address = UpnpGetServerIpAddress();
 	int port = UpnpGetServerPort();
-	cerr << "Using IP " << ip_address << " port " << port << endl;
+	LOGDEB("Using IP " << ip_address << " port " << port << endl);
 	UpnpCloseLog();
 #endif
 
@@ -106,16 +110,16 @@ void LibUPnP::setMaxContentLength(int bytes)
 	UpnpSetMaxContentLength(bytes);
 }
 
-bool LibUPnP::setLogFileName(const std::string& fn)
+bool LibUPnP::setLogFileName(const std::string& fn, LogLevel level)
 {
 	PTMutexLocker lock(m_mutex);
-	if (fn.empty()) {
+	if (fn.empty() || level == LogLevelNone) {
 #ifdef DEBUG
 		UpnpCloseLog();
 #endif
 	} else {
 #ifdef DEBUG
-		UpnpSetLogLevel(UPNP_INFO);
+		setLogLevel(level);
 		UpnpSetLogFileNames(fn.c_str(), fn.c_str());
 		int code = UpnpInitLog();
 		if (code != UPNP_E_SUCCESS) {
@@ -125,6 +129,23 @@ bool LibUPnP::setLogFileName(const std::string& fn)
 #endif
 	}
 	return true;
+}
+
+bool LibUPnP::setLogLevel(LogLevel level)
+{
+#ifdef DEBUG
+	switch (level) {
+	case LogLevelNone: 
+		setLogFileName("", LogLevelNone);
+		break;
+	case LogLevelError: 
+		UpnpSetLogLevel(UPNP_CRITICAL);
+		break;
+	case LogLevelDebug: 
+		UpnpSetLogLevel(UPNP_ALL);
+		break;
+	}
+#endif
 }
 
 void LibUPnP::registerHandler(Upnp_EventType et, Upnp_FunPtr handler,
