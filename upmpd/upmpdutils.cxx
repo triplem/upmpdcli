@@ -316,17 +316,6 @@ string didlmake(const MpdStatus& mpds, bool next)
     return ss.str();
 }
 
-bool sleepms(int ms)
-{
-    struct timespec duration;
-    duration.tv_sec = ms/1000;
-    ms -= 1000 * duration.tv_sec;
-    duration.tv_nsec = ms * 1000 * 1000; 
-    if (nanosleep(&duration, 0))
-        return false;
-    return true;
-}
-
 // Substitute regular expression
 // The c++11 regex package does not seem really ready from prime time
 // (Tried on gcc + libstdc++ 4.7.2-5 on Debian, with little
@@ -348,14 +337,17 @@ string regsub1(const string& sexp, const string& input, const string& repl)
     if ((err = regexec(&expr, input.c_str(), 10, pmatch, 0))) {
         regerror(err, &expr, errbuf, ERRSIZE);
         cerr << "upmpd: regsub1: regcomp() failed: " <<  errbuf << endl;
+        regfree(&expr);
         return string();
     }
     if (pmatch[0].rm_so == -1) {
         // No match
+        regfree(&expr);
         return input;
     }
     string out = input.substr(0, pmatch[0].rm_so);
     out += repl;
     out += input.substr(pmatch[0].rm_eo);
+    regfree(&expr);
     return out;
 }

@@ -59,3 +59,4 @@ dist_pkgdata_DATA = upmpd/description.xml upmpd/AVTransport.xml \
                   upmpd/RenderingControl.xml
 dist_sysconf_DATA = upmpd/upmpdcli.conf
 
+dist_man1_MANS = man/upmpdcli.1

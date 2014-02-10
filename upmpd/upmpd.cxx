@@ -826,11 +826,6 @@ int UpMpd::seqcontrol(const SoapArgs& sc, SoapData& data, int what)
 	case 1: ok = m_mpdcli->previous();break;
 	}
 
-	sleepms(200);
-	const struct MpdStatus &mpds1 = m_mpdcli->getStatus();
-
-	string uri = mapget(mpds.currentsong, "uri");
-
 	loopWakeup();
 	return ok ? UPNP_E_SUCCESS : UPNP_E_INTERNAL_ERROR;
 }
@@ -951,10 +946,10 @@ static int op_flags;
 static const char usage[] = 
 "-c configfile \t configuration file to use\n"
 "-h host    \t specify host MPD is running on\n"
-"-i port     \t specify MPD port\n"
+"-p port     \t specify MPD port\n"
 "-d logfilename\t debug messages to\n"
 "-l loglevel\t  log level (0-6)\n"
-"-D          \t stay in foreground\n"
+"-D          \t run as a daemon\n"
 "  \n\n"
 			;
 static void
@@ -973,9 +968,9 @@ int main(int argc, char *argv[])
 {
 	string mpdhost("localhost");
 	int mpdport = 6600;
-	string upnplogfilename("/tmp/upmpd_libupnp.log");
-	string logfilename("");
-	int loglevel(upnppdebug::Logger::LLDEB);
+//	string upnplogfilename("/tmp/upmpd_libupnp.log");
+	string logfilename;
+	int loglevel(upnppdebug::Logger::LLINF);
 	string configfile;
 
 	const char *cp;
@@ -1037,7 +1032,7 @@ int main(int argc, char *argv[])
 	}
 	upnppdebug::Logger::getTheLog("")->setLogLevel(upnppdebug::Logger::LogLevel(loglevel));
 
-	if (!(op_flags & OPT_D)) {
+	if ((op_flags & OPT_D)) {
 		if (daemon(1, 0)) {
 			LOGFAT("Daemon failed: errno " << errno << endl);
 			return 1;

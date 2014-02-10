@@ -4,7 +4,7 @@ Priority: extra
 Maintainer: Jean-Francois Dockes <jf@dockes.org>
 Build-Depends: debhelper (>= 8.0.0), autotools-dev
 Standards-Version: 3.9.3
-Homepage: http://www.recoll.org
+Homepage: http://www.lesbonscomptes.com/upmpdcli
 
 Package: upmpdcli
 Architecture: any
