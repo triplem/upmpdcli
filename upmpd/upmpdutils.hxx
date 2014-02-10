@@ -27,6 +27,12 @@
 extern bool file_to_string(const std::string &filename, std::string &data, 
                            std::string *reason = 0);
 
+extern void path_catslash(std::string &s);
+extern std::string path_cat(const std::string &s1, const std::string &s2);
+extern void trimstring(string &s, const char *ws = " \t");
+extern string path_tildexpand(const string &s);
+
+
 // Escape XML special chars.
 extern std::string xmlquote(const std::string& in);
 

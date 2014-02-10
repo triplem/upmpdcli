@@ -42,7 +42,7 @@ public:
 	 */
 	static LibUPnP* getLibUPnP(bool server = false);
 
-	/** Set log file name and activate logging.
+	/** Set libupnp log file name and activate logging.
 	 *
 	 * @param fn file name to use. Use empty string to turn logging off
 	 */

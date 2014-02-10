@@ -40,9 +40,6 @@ extern "C" {
 #include "md5.hxx"
 #include "log.hxx"
 
-// Level for the local log, not libupnp's
-int upnppdebug::loglevel = LLDEB;
-
 static LibUPnP *theLib;
 
 LibUPnP *LibUPnP::getLibUPnP(bool server)
@@ -53,6 +50,7 @@ LibUPnP *LibUPnP::getLibUPnP(bool server)
 		return 0;
 	return theLib;
 }
+
 
 LibUPnP::LibUPnP(bool server)
 	: m_ok(false)

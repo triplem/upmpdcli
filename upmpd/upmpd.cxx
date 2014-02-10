@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <string>
 #include <iostream>
@@ -626,7 +627,7 @@ int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
 		// the previous despite of the insertion. The UPnP docs say
 		// that setAVTransportURI should not change the transport
 		// state (pause/stop stay pause/stop) but it seems that some clients
-		// expect that the track will start playing so we let it play. 
+		// expect that the track will start playing.
 		// Needs to be revisited after seeing more clients. For now try to 
 		// preserve state as per standard.
 		// Audionet: issues a Play
@@ -933,6 +934,9 @@ int UpMpd::seek(const SoapArgs& sc, SoapData& data)
 
 /////////////////////////////////////////////////////////////////////
 // Main program
+
+#include "conftree.hxx"
+
 static char *thisprog;
 
 static int op_flags;
@@ -940,11 +944,17 @@ static int op_flags;
 #define OPT_h	  0x2
 #define OPT_p	  0x4
 #define OPT_d	  0x8
+#define OPT_D     0x10
+#define OPT_c     0x20
+#define OPT_l     0x40
 
 static const char usage[] = 
+"-c configfile \t configuration file to use\n"
 "-h host    \t specify host MPD is running on\n"
 "-i port     \t specify MPD port\n"
 "-d logfilename\t debug messages to\n"
+"-l loglevel\t  log level (0-6)\n"
+"-D          \t stay in foreground\n"
 "  \n\n"
 			;
 static void
@@ -956,19 +966,25 @@ Usage(void)
 
 static string myDeviceUUID;
 
-static string datadir("upmpd/");
+static string datadir(DATADIR "/");
+static string configdir(CONFIGDIR "/");
 
 int main(int argc, char *argv[])
 {
 	string mpdhost("localhost");
 	int mpdport = 6600;
 	string upnplogfilename("/tmp/upmpd_libupnp.log");
+	string logfilename("");
+	int loglevel(upnppdebug::Logger::LLDEB);
+	string configfile;
 
 	const char *cp;
 	if (cp = getenv("UPMPD_HOST"))
 		mpdhost = cp;
 	if (cp = getenv("UPMPD_PORT"))
 		mpdport = atoi(cp);
+	if (cp = getenv("UPMPD_CONFIG"))
+		configfile = cp;
 
 	thisprog = argv[0];
 	argc--; argv++;
@@ -978,12 +994,17 @@ int main(int argc, char *argv[])
 			Usage();
 		while (**argv)
 			switch (*(*argv)++) {
+			case 'D':	op_flags |= OPT_D; break;
+			case 'c':	op_flags |= OPT_c; if (argc < 2)  Usage();
+				configfile = *(++argv); argc--; goto b1;
+			case 'd':	op_flags |= OPT_d; if (argc < 2)  Usage();
+				logfilename = *(++argv); argc--; goto b1;
 			case 'h':	op_flags |= OPT_h; if (argc < 2)  Usage();
-				mpdhost = *(++argv); argc--;
-				goto b1;
+				mpdhost = *(++argv); argc--; goto b1;
+			case 'l':	op_flags |= OPT_l; if (argc < 2)  Usage();
+				loglevel = atoi(*(++argv)); argc--; goto b1;
 			case 'p':	op_flags |= OPT_p; if (argc < 2)  Usage();
-				mpdport = atoi(*(++argv)); argc--;
-				goto b1;
+				mpdport = atoi(*(++argv)); argc--; goto b1;
 			default: Usage();	break;
 			}
 	b1: argc--; argv++;
@@ -992,10 +1013,41 @@ int main(int argc, char *argv[])
 	if (argc != 0)
 		Usage();
 
+	if (!configfile.empty()) {
+		ConfSimple config(configfile.c_str(), 1, true);
+		if (!config.ok()) {
+			cerr << "Could not open config: " << configfile << endl;
+			return 1;
+		}
+		string value;
+		if (!(op_flags & OPT_d))
+			config.get("logfilename", logfilename);
+		if (!(op_flags & OPT_l) && config.get("loglevel", value))
+			loglevel = atoi(value.c_str());
+		if (!(op_flags & OPT_h))
+			config.get("mpdhost", mpdhost);
+		if (!(op_flags & OPT_p) && config.get("mpdport", value)) {
+			mpdport = atoi(value.c_str());
+		}
+	}
+
+	if (upnppdebug::Logger::getTheLog(logfilename) == 0) {
+		cerr << "Can't initialize log" << endl;
+		return 1;
+	}
+	upnppdebug::Logger::getTheLog("")->setLogLevel(upnppdebug::Logger::LogLevel(loglevel));
+
+	if (!(op_flags & OPT_D)) {
+		if (daemon(1, 0)) {
+			LOGFAT("Daemon failed: errno " << errno << endl);
+			return 1;
+		}
+	}
+
 	// Initialize libupnpp, and check health
 	LibUPnP *mylib = LibUPnP::getLibUPnP(true);
 	if (!mylib) {
-		LOGFAT(" Can't get LibUPnP" << endl);
+		LOGFAT("Can't get LibUPnP" << endl);
 		return 1;
 	}
 	if (!mylib->ok()) {
@@ -1033,6 +1085,7 @@ int main(int argc, char *argv[])
 		LOGFAT("Failed reading " << filename << " : " << reason << endl);
 		return 1;
 	}
+
 	string avt_scdp;
 	filename = datadir + "AVTransport.xml";
 	if (!file_to_string(filename, avt_scdp, &reason)) {

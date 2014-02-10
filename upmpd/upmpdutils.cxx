@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <math.h>
+#include <pwd.h>
 #include <regex.h>
 #include <errno.h>
 #include <string.h>
@@ -107,6 +108,69 @@ out:
     if (fd >= 0)
 	close(fd);
     return ret;
+}
+
+void path_catslash(string &s) {
+    if (s.empty() || s[s.length() - 1] != '/')
+	s += '/';
+}
+
+string path_cat(const string &s1, const string &s2) {
+    string res = s1;
+    path_catslash(res);
+    res +=  s2;
+    return res;
+}
+string path_home()
+{
+    uid_t uid = getuid();
+
+    struct passwd *entry = getpwuid(uid);
+    if (entry == 0) {
+	const char *cp = getenv("HOME");
+	if (cp)
+	    return cp;
+	else 
+	return "/";
+    }
+
+    string homedir = entry->pw_dir;
+    path_catslash(homedir);
+    return homedir;
+}
+
+string path_tildexpand(const string &s) 
+{
+    if (s.empty() || s[0] != '~')
+	return s;
+    string o = s;
+    if (s.length() == 1) {
+	o.replace(0, 1, path_home());
+    } else if  (s[1] == '/') {
+	o.replace(0, 2, path_home());
+    } else {
+	string::size_type pos = s.find('/');
+	int l = (pos == string::npos) ? s.length() - 1 : pos - 1;
+	struct passwd *entry = getpwnam(s.substr(1, l).c_str());
+	if (entry)
+	    o.replace(0, l+1, entry->pw_dir);
+    }
+    return o;
+}
+
+
+void trimstring(string &s, const char *ws)
+{
+    string::size_type pos = s.find_first_not_of(ws);
+    if (pos == string::npos) {
+	s.clear();
+	return;
+    }
+    s.replace(0, pos, string());
+
+    pos = s.find_last_not_of(ws);
+    if (pos != string::npos && pos != s.length()-1)
+	s.replace(pos+1, string::npos, string());
 }
 
 string xmlquote(const string& in)

@@ -1,5 +1,5 @@
-AC_INIT([LibUPnPp], [0.1], [jfd@lesbonscomptes.com],
-             [libupnpp], [http://www.lesbonscomptes.com/upnpp])
+AC_INIT([upmpdcli], [0.1], [jfd@lesbonscomptes.com],
+             [upmpdcli], [http://www.lesbonscomptes.com/upnpp])
 AC_PREREQ([2.53])
 AC_CONFIG_SRCDIR([libupnpp/upnpplib.hxx])
 AC_CONFIG_HEADERS([libupnpp/config.h])
