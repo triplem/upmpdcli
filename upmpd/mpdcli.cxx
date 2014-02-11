@@ -86,8 +86,10 @@ bool MPDCli::showError(const string& who)
     }
 
     int error = mpd_connection_get_error(M_CONN);
-    if (error == MPD_ERROR_SUCCESS)
+    if (error == MPD_ERROR_SUCCESS) {
+        //LOGDEB("MPDCli::showError: " << who << " success !" << endl;);
         return false;
+    }
     LOGERR(who << " failed: " <<  mpd_connection_get_error_message(M_CONN) 
            << endl);
     if (error == MPD_ERROR_SERVER) {
@@ -122,7 +124,10 @@ bool MPDCli::updStatus()
     if (mpds == 0) {
         openconn();
         mpds = mpd_run_status(M_CONN);
-        LOGERR("MPDCli::updStatus: can't get status" << endl);
+        if (mpds == 0) {
+            LOGERR("MPDCli::updStatus: can't get status" << endl);
+            showError("MPDCli::updStatus");
+        }
         return false;
     }
 

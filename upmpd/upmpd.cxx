@@ -51,7 +51,7 @@ public:
 	int getVolume(const SoapArgs& sc, SoapData& data, bool isDb);
 	int listPresets(const SoapArgs& sc, SoapData& data);
 	int selectPreset(const SoapArgs& sc, SoapData& data);
-	int getVolumeDBRange(const SoapArgs& sc, SoapData& data);
+//	int getVolumeDBRange(const SoapArgs& sc, SoapData& data);
     virtual bool getEventDataRendering(bool all, 
 									   std::vector<std::string>& names, 
 									   std::vector<std::string>& values);
@@ -117,24 +117,24 @@ UpMpd::UpMpd(const string& deviceid,
 	{	auto bound = bind(&UpMpd::setVolume, this, _1, _2, false);
 		addActionMapping("SetVolume", bound);
 	}
-	{	auto bound = bind(&UpMpd::setVolume, this, _1, _2, true);
-		addActionMapping("SetVolumeDB", bound);
-	}
+//	{	auto bound = bind(&UpMpd::setVolume, this, _1, _2, true);
+//		addActionMapping("SetVolumeDB", bound);
+//	}
 	{	auto bound = bind(&UpMpd::getVolume, this, _1, _2, false);
 		addActionMapping("GetVolume", bound);
 	}
-	{	auto bound = bind(&UpMpd::getVolume, this, _1, _2, true);
-		addActionMapping("GetVolumeDB", bound);
-	}
+//	{	auto bound = bind(&UpMpd::getVolume, this, _1, _2, true);
+//		addActionMapping("GetVolumeDB", bound);
+//	}
 	{	auto bound = bind(&UpMpd::listPresets, this, _1, _2);
 		addActionMapping("ListPresets", bound);
 	}
 	{	auto bound = bind(&UpMpd::selectPreset, this, _1, _2);
 		addActionMapping("SelectPreset", bound);
 	}
-	{	auto bound = bind(&UpMpd::getVolumeDBRange, this, _1, _2);
-		addActionMapping("GetVolumeDBRange", bound);
-	}
+//	{	auto bound = bind(&UpMpd::getVolumeDBRange, this, _1, _2);
+//		addActionMapping("GetVolumeDBRange", bound);
+//	}
 
 	addServiceType(serviceIdTransport,
 				   "urn:schemas-upnp-org:service:AVTransport:1");
@@ -237,8 +237,8 @@ bool UpMpd::rdstateMToU(unordered_map<string, string>& status)
 	char cvalue[30];
 	sprintf(cvalue, "%d", volume);
 	status["Volume"] = cvalue;
-	sprintf(cvalue, "%d", percentodbvalue(volume));
-	status["VolumeDB"] =  cvalue;
+//	sprintf(cvalue, "%d", percentodbvalue(volume));
+//	status["VolumeDB"] =  cvalue;
 	status["Mute"] =  volume == 0 ? "1" : "0";
 }
 
@@ -306,7 +306,7 @@ bool UpMpd::getEventDataRendering(bool all, std::vector<std::string>& names,
 //   specified in the service description (SCPD) available from the
 //   device.
 
-
+#if 0
 int UpMpd::getVolumeDBRange(const SoapArgs& sc, SoapData& data)
 {
 	map<string, string>::const_iterator it;
@@ -320,7 +320,7 @@ int UpMpd::getVolumeDBRange(const SoapArgs& sc, SoapData& data)
 
 	return UPNP_E_SUCCESS;
 }
-
+#endif
 int UpMpd::setMute(const SoapArgs& sc, SoapData& data)
 {
 	map<string, string>::const_iterator it;
@@ -813,7 +813,7 @@ int UpMpd::playcontrol(const SoapArgs& sc, SoapData& data, int what)
 	case MpdStatus::MPDS_PLAY: 
 		switch (what) {
 		case 0:	ok = m_mpdcli->stop(); break;
-		case 1:break;
+		case 1: ok = m_mpdcli->play();break;
 		case 2: ok = m_mpdcli->togglePause();break;
 		}
 		break;
