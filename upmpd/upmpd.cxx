@@ -72,32 +72,30 @@ public:
 									   std::vector<std::string>& names, 
 									   std::vector<std::string>& values);
 
-	// Shared
+	// Re-implemented from the base class and shared by both services
     virtual bool getEventData(bool all, const string& serviceid, 
 							  std::vector<std::string>& names, 
 							  std::vector<std::string>& values);
 
 private:
 	MPDCli *m_mpdcli;
+
 	// State variable storage
-	unordered_map<string, string> m_rdupdates;
+	unordered_map<string, string> m_rdstate;
 	unordered_map<string, string> m_tpstate;
+
+	// Translate MPD state to Renderer state variables.
+	bool rdstateMToU(unordered_map<string, string>& state);
+	// Translate MPD state to AVTransport state variables.
+	bool tpstateMToU(unordered_map<string, string>& state);
 
 	// My track identifiers (for cleaning up)
 	set<int> m_songids;
 
-	// The two services use different methods for recording changed
-	// state: The RenderingControl actions record changes one at a
-	// time while the AVTransport recomputes the whole state by
-	// querying MPD and runs a diff with the previous state
+	// Desired volume target. We may delay executing small volume
+	// changes to avoid saturating with small requests.
+	int m_desiredvolume;
 
-	// Record RenderingControl state change
-	void renderingUpdate(const string& nm, const string& val) {
-		m_rdupdates[nm] = val;
-	}
-
-	// Translate MPD state to AVTransport state variables.
-	bool tpstateMToU(unordered_map<string, string>& state);
 };
 
 static const string serviceIdRender("urn:upnp-org:serviceId:RenderingControl");
@@ -106,7 +104,7 @@ static const string serviceIdTransport("urn:upnp-org:serviceId:AVTransport");
 UpMpd::UpMpd(const string& deviceid, 
 			 const unordered_map<string, string>& xmlfiles,
 			 MPDCli *mpdcli)
-	: UpnpDevice(deviceid, xmlfiles), m_mpdcli(mpdcli)
+	: UpnpDevice(deviceid, xmlfiles), m_mpdcli(mpdcli), m_desiredvolume(-1)
 {
 	addServiceType(serviceIdRender,
 				   "urn:schemas-upnp-org:service:RenderingControl:1");
@@ -188,10 +186,10 @@ UpMpd::UpMpd(const string& deviceid,
 	}
 }
 
-// This is called at regular intervals by the polling loop to retrieve
-// changed state variables for each of the services (the list of
-// services was defined in the base class by the "addServiceTypes()"
-// calls during construction). 
+// This is called by the polling loop at regular intervals, or when
+// triggered, to retrieve changed state variables for each of the
+// services (the list of services was defined in the base class by the
+// "addServiceTypes()" calls during construction).
 //
 // We might add a method for triggering an event from the action
 // methods after changing state, which would really act only if the
@@ -228,41 +226,68 @@ bool UpMpd::getEventData(bool all, const string& serviceid,
 //     <VolumeDB channel=”Master” val=”24”/>
 //   </InstanceID>
 // </Event>
+
+bool UpMpd::rdstateMToU(unordered_map<string, string>& status)
+{
+	const struct MpdStatus &mpds = m_mpdcli->getStatus();
+
+	int volume = m_desiredvolume >= 0 ? m_desiredvolume : mpds.volume;
+	if (volume < 0)
+		volume = 0;
+	char cvalue[30];
+	sprintf(cvalue, "%d", volume);
+	status["Volume"] = cvalue;
+	sprintf(cvalue, "%d", percentodbvalue(volume));
+	status["VolumeDB"] =  cvalue;
+	status["Mute"] =  volume == 0 ? "1" : "0";
+}
+
 bool UpMpd::getEventDataRendering(bool all, std::vector<std::string>& names, 
 								  std::vector<std::string>& values)
 {
-	if (all) {
-		// Record all values in the changes structure.
-		int volume = m_mpdcli->getVolume();
-		renderingUpdate("Mute", volume == 0 ? "1" : "0");
-		char cvalue[40];
-		sprintf(cvalue, "%d", volume);
-		renderingUpdate("Volume", cvalue);
-		sprintf(cvalue, "%d", percentodbvalue(volume));
-		renderingUpdate("VolumeDB", cvalue);
-		renderingUpdate("PresetNameList", "FactoryDefault");
+	//LOGDEB("UpMpd::getEventDataRendering. desiredvolume " << 
+	//		   m_desiredvolume << (all?" all " : "") << endl);
+	if (m_desiredvolume >= 0) {
+		m_mpdcli->setVolume(m_desiredvolume);
+		m_desiredvolume = -1;
 	}
 
-	if (m_rdupdates.empty())
-		return true;
-
-	names.push_back("LastChange");
+	unordered_map<string, string> newstate;
+	rdstateMToU(newstate);
+	if (all)
+		m_rdstate.clear();
 
 	string 
 		chgdata("<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT_RCS\">\n"
 				"<InstanceID val=\"0\">\n");
-	for (unordered_map<string, string>::const_iterator it = m_rdupdates.begin();
-		 it != m_rdupdates.end(); it++) {
+
+	bool changefound = false;
+	for (unordered_map<string, string>::const_iterator it = newstate.begin();
+		 it != newstate.end(); it++) {
+
+		const string& oldvalue = mapget(m_rdstate, it->first);
+		if (!it->second.compare(oldvalue))
+			continue;
+
+		changefound = true;
+
 		chgdata += "<";
 		chgdata += it->first;
-		chgdata += " channel=\"Master\" val=\"";
+		chgdata += " val=\"";
 		chgdata += xmlquote(it->second);
 		chgdata += "\"/>\n";
 	}
 	chgdata += "</InstanceID>\n</Event>\n";
 
+	if (!changefound) {
+		return true;
+	}
+
+	names.push_back("LastChange");
 	values.push_back(chgdata);
-	m_rdupdates.clear();
+
+	m_rdstate = newstate;
+
 	return true;
 }
 
@@ -310,12 +335,14 @@ int UpMpd::setMute(const SoapArgs& sc, SoapData& data)
 		return UPNP_E_INVALID_PARAM;
 	}
 	if (it->second[0] == 'F' || it->second[0] == '0') {
-		// Relative set of 0 -> restore pre-mute
-		m_mpdcli->setVolume(0, 1);
-		renderingUpdate("Mute", "0");
+		// Restore pre-mute
+		m_mpdcli->setVolume(1, true);
 	} else if (it->second[0] == 'T' || it->second[0] == '1') {
-		m_mpdcli->setVolume(0);
-		renderingUpdate("Mute", "1");
+		if (m_desiredvolume >= 0) {
+			m_mpdcli->setVolume(m_desiredvolume);
+			m_desiredvolume = -1;
+		}
+		m_mpdcli->setVolume(0, true);
 	} else {
 		return UPNP_E_INVALID_PARAM;
 	}
@@ -356,13 +383,18 @@ int UpMpd::setVolume(const SoapArgs& sc, SoapData& data, bool isDb)
 	if (volume < 0 || volume > 100) {
 		return UPNP_E_INVALID_PARAM;
 	}
-	m_mpdcli->setVolume(volume);
-
-	char cvalue[30];
-	sprintf(cvalue, "%d", volume);
-	renderingUpdate("Volume", cvalue);
-	sprintf(cvalue, "%d", percentodbvalue(volume));
-	renderingUpdate("VolumeDB", cvalue);
+	
+	int previous_volume = m_mpdcli->getVolume();
+	int delta = previous_volume - volume;
+	if (delta < 0)
+		delta = -delta;
+	LOGDEB("UpMpd::setVolume: volume " << volume << " delta " << delta << endl);
+	if (delta >= 5) {
+		m_mpdcli->setVolume(volume);
+		m_desiredvolume = -1;
+	} else {
+		m_desiredvolume = volume;
+	}
 
 	loopWakeup();
 	return UPNP_E_SUCCESS;
@@ -370,6 +402,7 @@ int UpMpd::setVolume(const SoapArgs& sc, SoapData& data, bool isDb)
 
 int UpMpd::getVolume(const SoapArgs& sc, SoapData& data, bool isDb)
 {
+	// LOGDEB("UpMpd::getVolume" << endl);
 	map<string, string>::const_iterator it;
 
 	it = sc.args.find("Channel");
@@ -409,11 +442,6 @@ int UpMpd::selectPreset(const SoapArgs& sc, SoapData& data)
 	// Well there is only the volume actually...
 	int volume = 50;
 	m_mpdcli->setVolume(volume);
-	char cvalue[30];
-	sprintf(cvalue, "%d", volume);
-	renderingUpdate("Volume", cvalue);
-	sprintf(cvalue, "%d", percentodbvalue(volume));
-	renderingUpdate("VolumeDB", cvalue);
 
 	return UPNP_E_SUCCESS;
 }
@@ -661,7 +689,7 @@ int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
 int UpMpd::getPositionInfo(const SoapArgs& sc, SoapData& data)
 {
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
-	LOGDEB("UpMpd::getPositionInfo. State: " << mpds.state << endl);
+	//LOGDEB("UpMpd::getPositionInfo. State: " << mpds.state << endl);
 
 	bool is_song = (mpds.state == MpdStatus::MPDS_PLAY) || 
 		(mpds.state == MpdStatus::MPDS_PAUSE);
@@ -710,7 +738,7 @@ int UpMpd::getPositionInfo(const SoapArgs& sc, SoapData& data)
 int UpMpd::getTransportInfo(const SoapArgs& sc, SoapData& data)
 {
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
-	LOGDEB("UpMpd::getTransportInfo. State: " << mpds.state << endl);
+	//LOGDEB("UpMpd::getTransportInfo. State: " << mpds.state << endl);
 
 	string tstate("STOPPED");
 	switch(mpds.state) {

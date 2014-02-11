@@ -52,7 +52,7 @@ public:
            const std::string& pass="");
     ~MPDCli();
     bool ok() {return m_ok && m_conn;}
-    bool setVolume(int ivol, bool relative = false);
+    bool setVolume(int ivol, bool isMute = false);
     int  getVolume();
     bool togglePause();
     bool play(int pos = -1);

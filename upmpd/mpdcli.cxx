@@ -27,6 +27,7 @@
 #include <mpd/player.h>
 #include <mpd/queue.h>
 
+#include "libupnpp/log.hxx"
 #include "mpdcli.hxx"
 
 using namespace std;
@@ -58,7 +59,7 @@ bool MPDCli::openconn()
     }
     m_conn = mpd_connection_new(m_host.c_str(), m_port, 0);
     if (m_conn == NULL) {
-        cerr << "mpd_connection_new failed. No memory?" << endl;
+        LOGERR("mpd_connection_new failed. No memory?" << endl);
         return false;
     }
 
@@ -69,7 +70,7 @@ bool MPDCli::openconn()
 
     if(!m_password.empty()) {
         if (!mpd_run_password(M_CONN, m_password.c_str())) {
-            cerr << "Password wrong" << endl;
+            LOGERR("Password wrong" << endl);
             return false;
         }
     }
@@ -80,18 +81,20 @@ bool MPDCli::openconn()
 bool MPDCli::showError(const string& who)
 {
     if (!ok()) {
-        cerr << "MPDCli::showError: bad state" << endl;
+        LOGERR("MPDCli::showError: bad state" << endl);
         return false;
     }
 
     int error = mpd_connection_get_error(M_CONN);
     if (error == MPD_ERROR_SUCCESS)
         return false;
-    cerr << who << " failed: " <<  mpd_connection_get_error_message(M_CONN);
+    LOGERR(who << " failed: " <<  mpd_connection_get_error_message(M_CONN) 
+           << endl);
     if (error == MPD_ERROR_SERVER) {
-        cerr << " server error: " << mpd_connection_get_server_error(M_CONN) ;
+        LOGERR(who << " server error: " << 
+               mpd_connection_get_server_error(M_CONN) << endl);
     }
-    cerr << endl;
+
     if (error == MPD_ERROR_CLOSED)
         if (openconn())
             return true;
@@ -110,7 +113,7 @@ bool MPDCli::showError(const string& who)
 bool MPDCli::updStatus()
 {
     if (!ok()) {
-        cerr << "MPDCli::updStatus: bad state" << endl;
+        LOGERR("MPDCli::updStatus: bad state" << endl);
         return false;
     }
 
@@ -119,7 +122,7 @@ bool MPDCli::updStatus()
     if (mpds == 0) {
         openconn();
         mpds = mpd_run_status(M_CONN);
-        cerr << "MPDCli::updStatus: can't get status" << endl;
+        LOGERR("MPDCli::updStatus: can't get status" << endl);
         return false;
     }
 
@@ -162,7 +165,7 @@ bool MPDCli::updStatus()
 
 bool MPDCli::updSong(unordered_map<string, string>& tsong, int pos)
 {
-    // cerr << "MPDCli::updSong" << endl;
+    // LOGDEB("MPDCli::updSong" << endl);
     tsong.clear();
     if (!ok())
         return false;
@@ -175,7 +178,7 @@ bool MPDCli::updSong(unordered_map<string, string>& tsong, int pos)
     }
         
     if (song == 0) {
-        cerr << "mpd_run_current_song failed" << endl;
+        LOGERR("mpd_run_current_song failed" << endl);
         return false;
     }
 
@@ -209,25 +212,28 @@ bool MPDCli::updSong(unordered_map<string, string>& tsong, int pos)
     return true;
 }
 
-bool MPDCli::setVolume(int volume, bool relative)
+bool MPDCli::setVolume(int volume, bool isMute)
 {
     if (!ok()) {
         return false;
     }
-    // Can't set volume if not active
+
+    // MPD does not want to set the volume if not active.
     if (!(m_stat.state== MpdStatus::MPDS_PLAY) &&
         !(m_stat.state == MpdStatus::MPDS_PAUSE)) {
-        cerr << "MPDCli::setVolume: not active" << endl;
+        LOGINF("MPDCli::setVolume: not active" << endl);
         return true;
     }
-    cerr << "setVolume: vol " << volume << " relative " << relative << endl;
-    if (volume == 0) {
-        if (relative) {
+
+    LOGDEB("MPDCli::setVolume: vol " << volume << " isMute " << isMute << endl);
+
+    if (isMute) {
+        if (volume) {
             // Restore premute volume
-            m_stat.volume = m_premutevolume;
-            cerr << "Restoring premute" << endl;
+            LOGDEB("MPDCli::setVolume: restoring premute " << m_premutevolume 
+                   << endl);
+            volume = m_stat.volume = m_premutevolume;
         } else {
-            updStatus();
             if (m_stat.volume != 0) {
                 cerr << "Saving premute: " << m_stat.volume << endl;
                 m_premutevolume = m_stat.volume;
@@ -235,9 +241,6 @@ bool MPDCli::setVolume(int volume, bool relative)
         }
     }
         
-    if (relative)
-        volume += m_stat.volume;
-
     if (volume < 0)
         volume = 0;
     else if (volume > 100)
@@ -250,14 +253,12 @@ bool MPDCli::setVolume(int volume, bool relative)
 
 int MPDCli::getVolume()
 {
-    if (!updStatus())
-        return -1;
     return m_stat.volume == -1 ? 0: m_stat.volume;
 }
 
 bool MPDCli::togglePause()
 {
-    cerr << "MPDCli::togglePause" << endl;
+    LOGDEB("MPDCli::togglePause" << endl);
     if (!ok())
         return false;
     RETRY_CMD(mpd_run_toggle_pause(M_CONN));
@@ -266,7 +267,7 @@ bool MPDCli::togglePause()
 
 bool MPDCli::play(int pos)
 {
-    cerr << "MPDCli::play(pos=" << pos << ")" << endl;
+    LOGDEB("MPDCli::play(pos=" << pos << ")" << endl);
     if (!ok())
         return false;
     if (pos >= 0) {
@@ -274,11 +275,11 @@ bool MPDCli::play(int pos)
     } else {
         RETRY_CMD(mpd_run_play(M_CONN));
     }
-    return true;
+    return updStatus();
 }
 bool MPDCli::stop()
 {
-    cerr << "MPDCli::stop" << endl;
+    LOGDEB("MPDCli::stop" << endl);
     if (!ok())
         return false;
     RETRY_CMD(mpd_run_stop(M_CONN));
@@ -288,14 +289,14 @@ bool MPDCli::seek(int seconds)
 {
     if (!updStatus())
         return -1;
-    cerr << "MPDCli::seek: pos:"<<m_stat.songpos<<" seconds: "<< seconds<<endl;
+    LOGDEB("MPDCli::seek: pos:"<<m_stat.songpos<<" seconds: "<< seconds<<endl);
     RETRY_CMD(mpd_run_seek_pos(M_CONN, m_stat.songpos, (unsigned int)seconds));
     return true;
 }
 
 bool MPDCli::next()
 {
-    cerr << "MPDCli::next" << endl;
+    LOGDEB("MPDCli::next" << endl);
     if (!ok())
         return false;
     RETRY_CMD(mpd_run_next(M_CONN));
@@ -303,7 +304,7 @@ bool MPDCli::next()
 }
 bool MPDCli::previous()
 {
-    cerr << "MPDCli::previous" << endl;
+    LOGDEB("MPDCli::previous" << endl);
     if (!ok())
         return false;
     RETRY_CMD(mpd_run_previous(M_CONN));
@@ -311,7 +312,7 @@ bool MPDCli::previous()
 }
 bool MPDCli::repeat(bool on)
 {
-    cerr << "MPDCli::repeat:" << on << endl;
+    LOGDEB("MPDCli::repeat:" << on << endl);
     if (!ok())
         return false;
     RETRY_CMD(mpd_run_repeat(M_CONN, on));
@@ -319,7 +320,7 @@ bool MPDCli::repeat(bool on)
 }
 bool MPDCli::random(bool on)
 {
-    cerr << "MPDCli::random:" << on << endl;
+    LOGDEB("MPDCli::random:" << on << endl);
     if (!ok())
         return false;
     RETRY_CMD(mpd_run_random(M_CONN, on));
@@ -327,7 +328,7 @@ bool MPDCli::random(bool on)
 }
 bool MPDCli::single(bool on)
 {
-    cerr << "MPDCli::single:" << on << endl;
+    LOGDEB("MPDCli::single:" << on << endl);
     if (!ok())
         return false;
     RETRY_CMD(mpd_run_single(M_CONN, on));
@@ -336,7 +337,7 @@ bool MPDCli::single(bool on)
 
 int MPDCli::insert(const string& uri, int pos)
 {
-    cerr << "MPDCli::insert at :" << pos << " uri " << uri << endl;
+    LOGDEB("MPDCli::insert at :" << pos << " uri " << uri << endl);
     if (!ok())
         return -1;
 
@@ -353,7 +354,7 @@ int MPDCli::insert(const string& uri, int pos)
 }
 bool MPDCli::deleteId(int id)
 {
-    cerr << "MPDCli::deleteId " << id << endl;
+    LOGDEB("MPDCli::deleteId " << id << endl);
     if (!ok())
         return -1;
 
@@ -362,7 +363,7 @@ bool MPDCli::deleteId(int id)
 }
 bool MPDCli::statId(int id)
 {
-    cerr << "MPDCli::statId " << id << endl;
+    LOGDEB("MPDCli::statId " << id << endl);
     if (!ok())
         return -1;
 
@@ -377,7 +378,7 @@ int MPDCli::curpos()
 {
     if (!updStatus())
         return -1;
-    cerr << "MPDCli::curpos: pos: " << m_stat.songpos << " id " 
-         << m_stat.songid << endl;
+    LOGDEB("MPDCli::curpos: pos: " << m_stat.songpos << " id " 
+           << m_stat.songid << endl);
     return m_stat.songpos;
 }

@@ -269,8 +269,8 @@ void UpnpDevice::notifyEvent(const string& serviceId,
                              const vector<string>& names, 
                              const vector<string>& values)
 {
-    LOGDEB("UpnpDevice::notifyEvent: " 
-           << (names.empty()?"Empty names??":names[0]) << endl);
+    LOGDEB("UpnpDevice::notifyEvent " << serviceId << " " <<
+           (names.empty()?"Empty names??":names[0]) << endl);
     if (names.empty())
         return;
     vector<const char *> cnames, cvalues;
@@ -308,8 +308,8 @@ int timespec_diffms(const struct timespec& old, const struct timespec& recent)
 void UpnpDevice::eventloop()
 {
     int count = 0;
-    const int loopwait_ms = 500; // Polling mpd every 1/2 S
-    const int nloopstofull = 10; // Full state every 5 S
+    const int loopwait_ms = 1000; // Polling mpd every 1 S
+    const int nloopstofull = 10;  // Full state every 10 S
     struct timespec wkuptime, earlytime;
     bool didearly = false;
 
