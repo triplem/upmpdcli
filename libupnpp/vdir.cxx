@@ -160,6 +160,7 @@ bool VirtualDir::addFile(const string& _path, const string& name,
 	m_dirs[path][name] = entry;
 	// LOGDEB("VirtualDir::addFile: added entry for dir " << 
 	// path << " name " << name << endl);
+	return true;
 }
 
 VirtualDir::FileEnt *VirtualDir::getFile(const string& _path, 

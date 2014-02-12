@@ -240,6 +240,7 @@ bool UpMpd::rdstateMToU(unordered_map<string, string>& status)
 //	sprintf(cvalue, "%d", percentodbvalue(volume));
 //	status["VolumeDB"] =  cvalue;
 	status["Mute"] =  volume == 0 ? "1" : "0";
+	return true;
 }
 
 bool UpMpd::getEventDataRendering(bool all, std::vector<std::string>& names, 
@@ -666,6 +667,7 @@ int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
 		switch (st) {
 		case MpdStatus::MPDS_PAUSE: m_mpdcli->togglePause(); break;
 		case MpdStatus::MPDS_STOP: m_mpdcli->stop(); break;
+		default: break;
 		}
 #endif
 		// Clean up old song ids
@@ -744,6 +746,7 @@ int UpMpd::getTransportInfo(const SoapArgs& sc, SoapData& data)
 	switch(mpds.state) {
 	case MpdStatus::MPDS_PLAY: tstate = "PLAYING"; break;
 	case MpdStatus::MPDS_PAUSE: tstate = "PAUSED_PLAYBACK"; break;
+	default: break;
 	}
 	data.addarg("CurrentTransportState", tstate);
 	data.addarg("CurrentTransportStatus", m_mpdcli->ok() ? "OK" : 
@@ -1004,13 +1007,13 @@ int main(int argc, char *argv[])
 	string friendlyname(dfltFriendlyName);
 
 	const char *cp;
-	if (cp = getenv("UPMPD_HOST"))
+	if ((cp = getenv("UPMPD_HOST")))
 		mpdhost = cp;
-	if (cp = getenv("UPMPD_PORT"))
+	if ((cp = getenv("UPMPD_PORT")))
 		mpdport = atoi(cp);
-	if (cp = getenv("UPMPD_FRIENDLYNAME"))
+	if ((cp = getenv("UPMPD_FRIENDLYNAME")))
 		friendlyname = atoi(cp);
-	if (cp = getenv("UPMPD_CONFIG"))
+	if ((cp = getenv("UPMPD_CONFIG")))
 		configfile = cp;
 
 	thisprog = argv[0];

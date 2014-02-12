@@ -146,8 +146,6 @@ int UpnpDevice::sCallBack(Upnp_EventType et, void* evp, void* tok)
     }
     // LOGDEB("UpnpDevice::sCallBack: deviceid[" << deviceid << "]" << endl);
 
-    unordered_map<std::string, UpnpDevice *> *devmap = 
-        (unordered_map<std::string, UpnpDevice *> *) tok;
     unordered_map<std::string, UpnpDevice *>::iterator it =
         o_devices.find(deviceid);
 

@@ -69,7 +69,7 @@ void catstrerror(string *reason, const char *what, int _errno)
     // normally default to the posix version.
     // At worse we get no message at all here.
     errbuf[0] = 0;
-    strerror_r(_errno, errbuf, ERRBUFSZ);
+    (void)strerror_r(_errno, errbuf, ERRBUFSZ);
     reason->append(errbuf);
 #endif
 }
@@ -90,7 +90,6 @@ bool file_to_string(const string &fn, string &data, string *reason)
     data.reserve(st.st_size+1);
 
     char buf[RDBUFSZ];
-    size_t totread = 0;
     for (;;) {
 	int n = read(fd, buf, RDBUFSZ);
 	if (n < 0) {

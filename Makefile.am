@@ -1,6 +1,6 @@
 
 # This should be from configure'd CFLAGS 
-AM_CPPFLAGS = -DDEBUG -g -std=c++0x \
+AM_CPPFLAGS = -DDEBUG -g -Wall -std=c++0x \
             -DDATADIR=\"${pkgdatadir}\" -DCONFIGDIR=\"${sysconfdir}\"
 
 lib_LTLIBRARIES = libupnpp.la

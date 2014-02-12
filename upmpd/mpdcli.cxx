@@ -105,7 +105,7 @@ bool MPDCli::showError(const string& who)
 
 #define RETRY_CMD(CMD) {                                \
     for (int i = 0; i < 2; i++) {                       \
-        if (CMD)                                        \
+        if ((CMD))                                      \
             break;                                      \
         if (i == 1 || !showError(#CMD))                 \
             return false;                               \

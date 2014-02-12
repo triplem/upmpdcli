@@ -146,6 +146,7 @@ bool LibUPnP::setLogLevel(LogLevel level)
 		break;
 	}
 #endif
+	return true;
 }
 
 void LibUPnP::registerHandler(Upnp_EventType et, Upnp_FunPtr handler,
