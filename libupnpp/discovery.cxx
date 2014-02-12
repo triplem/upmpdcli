@@ -14,6 +14,7 @@
  *	 Free Software Foundation, Inc.,
  *	 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
+#include "config.h"
 
 #include <stdlib.h>
 #include <errno.h>
@@ -54,7 +55,7 @@ static bool isMSDevice(const string& st)
 	return !MediaServerDType.compare(0, sz, st, 0, sz);
 }
 
-#ifdef UPNPP_DEBUG
+#if defined(HAVE_UPNPSETLOGLEVEL)
 static string cluDiscoveryToStr(const struct Upnp_Discovery *disco)
 {
 	stringstream ss;

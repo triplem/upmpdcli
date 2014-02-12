@@ -17,6 +17,7 @@
 
 #ifndef _UPNPP_H_X_INCLUDED_
 #define _UPNPP_H_X_INCLUDED_
+#include "config.h"
 
 /* Private shared defs for the library. Clients need not and should
    not include this */
@@ -29,9 +30,7 @@ extern std::string path_getfather(const std::string &s);
 extern std::string path_getsimple(const std::string &s);
 template <class T> bool csvToStrings(const std::string& s, T &tokens);
 
-#define UPNPP_DEBUG
-
-#if defined(UPNPP_DEBUG) && defined(DEBUG)
+#if defined(HAVE_UPNPSETLOGLEVEL)
 #include <upnp/upnpdebug.h>
 #define PLOGINF(...) UpnpPrintf(UPNP_INFO, API, __FILE__, __LINE__, __VA_ARGS__)
 #define PLOGDEB(...) UpnpPrintf(UPNP_INFO,API, __FILE__, __LINE__, __VA_ARGS__)

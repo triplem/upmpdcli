@@ -16,6 +16,7 @@
  */
 // An XML parser which constructs an UPnP device object from the
 // device descriptor
+#include "config.h"
 
 #include <stdlib.h>
 #include <errno.h>

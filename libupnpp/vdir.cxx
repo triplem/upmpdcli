@@ -14,12 +14,14 @@
  *	 Free Software Foundation, Inc.,
  *	 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
+#include "config.h"
 
 #include <sys/types.h>
 #include <memory.h>
 #include <iostream>
 
-#include "upnpplib.hxx"
+#include <upnp/upnp.h>
+
 #include "upnpp_p.hxx"
 #include "vdir.hxx"
 #include "log.hxx"
@@ -45,6 +47,7 @@ static int vdclose(UpnpWebFileHandle fileHnd)
 
 static VirtualDir::FileEnt *vdgetentry(const char *pathname)
 {
+	//LOGDEB("vdgetentry: [" << pathname << "]" << endl);
 	VirtualDir *thedir = VirtualDir::getVirtualDir();
 	if (thedir == 0)
 		return 0;
@@ -57,17 +60,20 @@ static VirtualDir::FileEnt *vdgetentry(const char *pathname)
 
 static int vdgetinfo(const char *fn, struct File_Info* info )
 {
-	//LOGDEB("vdgetinfo: " << fn << endl);
+	//LOGDEB("vdgetinfo: [" << fn << "] off_t " << sizeof(off_t) <<
+	// " time_t " << sizeof(time_t) << endl);
 	VirtualDir::FileEnt *entry = vdgetentry(fn);
 	if (entry == 0) {
 		LOGERR("vdgetinfo: no entry for " << fn << endl);
 		return -1;
 	}
+
 	info->file_length = entry->content.size();
 	info->last_modified = entry->mtime;
 	info->is_directory = 0;
 	info->is_readable = 1;
 	info->content_type = ixmlCloneDOMString(entry->mimetype.c_str());
+
 	return 0;
 }
 
@@ -97,7 +103,7 @@ static int vdread(UpnpWebFileHandle fileHnd, char* buf, size_t buflen)
 	return toread;
 }
 
-static int vdseek(UpnpWebFileHandle fileHnd, long offset, int origin)
+static int vdseek(UpnpWebFileHandle fileHnd, off_t offset, int origin)
 {
 	// LOGDEB("vdseek: " << endl);
 	Handle *h = (Handle *)fileHnd;

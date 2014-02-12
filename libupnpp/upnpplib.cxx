@@ -14,6 +14,7 @@
  *	 Free Software Foundation, Inc.,
  *	 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
+#include "config.h"
 
 #include <string.h>
 
@@ -62,10 +63,11 @@ LibUPnP::LibUPnP(bool server)
 	}
 	setMaxContentLength(2000*1024);
 
-#ifdef DEBUG
 	const char *ip_address = UpnpGetServerIpAddress();
 	int port = UpnpGetServerPort();
 	LOGDEB("Using IP " << ip_address << " port " << port << endl);
+
+#if defined(HAVE_UPNPSETLOGLEVEL)
 	UpnpCloseLog();
 #endif
 
@@ -112,11 +114,11 @@ bool LibUPnP::setLogFileName(const std::string& fn, LogLevel level)
 {
 	PTMutexLocker lock(m_mutex);
 	if (fn.empty() || level == LogLevelNone) {
-#ifdef DEBUG
+#if defined(HAVE_UPNPSETLOGLEVEL)
 		UpnpCloseLog();
 #endif
 	} else {
-#ifdef DEBUG
+#if defined(HAVE_UPNPSETLOGLEVEL)
 		setLogLevel(level);
 		UpnpSetLogFileNames(fn.c_str(), fn.c_str());
 		int code = UpnpInitLog();
@@ -131,7 +133,7 @@ bool LibUPnP::setLogFileName(const std::string& fn, LogLevel level)
 
 bool LibUPnP::setLogLevel(LogLevel level)
 {
-#ifdef DEBUG
+#if defined(HAVE_UPNPSETLOGLEVEL)
 	switch (level) {
 	case LogLevelNone: 
 		setLogFileName("", LogLevelNone);

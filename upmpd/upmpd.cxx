@@ -1078,7 +1078,7 @@ int main(int argc, char *argv[])
 			   mylib->errAsString("main", mylib->getInitError()) << endl);
 		return 1;
 	}
-	// mylib->setLogFileName(upnplogfilename);
+	// mylib->setLogFileName(upnplogfilename, LibUPnP::LogLevelDebug);
 
 	// Initialize MPD client module
 	MPDCli mpdcli(mpdhost, mpdport);
