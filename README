@@ -30,6 +30,8 @@ playlist. mpd finally retrieves the data from the Media Server using HTTP.
 
 
 Each of the Control point, Media Server, mpd and upmpdcli processes can run
-on any network host, for example for mpd and upmpdcli to run on the same
-host.
+on any network host, there is no reason, for example, for mpd and upmpdcli
+to run on the same host.
+
+Install notes: see http://www.lesbonscomptes.com/upmpdcli for now.
 
