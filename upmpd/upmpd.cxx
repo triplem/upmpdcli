@@ -36,7 +36,7 @@ using namespace std::placeholders;
 #include "mpdcli.hxx"
 #include "upmpdutils.hxx"
 
-static const string friendlyName("UpMpd");
+static const string dfltFriendlyName("UpMpd");
 
 // The UPnP MPD frontend device with its 2 services
 class UpMpd : public UpnpDevice {
@@ -970,7 +970,7 @@ static int op_flags;
 #define OPT_D     0x10
 #define OPT_c     0x20
 #define OPT_l     0x40
-
+#define OPT_f     0x80
 static const char usage[] = 
 "-c configfile \t configuration file to use\n"
 "-h host    \t specify host MPD is running on\n"
@@ -978,6 +978,7 @@ static const char usage[] =
 "-d logfilename\t debug messages to\n"
 "-l loglevel\t  log level (0-6)\n"
 "-D          \t run as a daemon\n"
+"-f friendlyname\t define device displayed name\n"
 "  \n\n"
 			;
 static void
@@ -1000,12 +1001,15 @@ int main(int argc, char *argv[])
 	string logfilename;
 	int loglevel(upnppdebug::Logger::LLINF);
 	string configfile;
+	string friendlyname(dfltFriendlyName);
 
 	const char *cp;
 	if (cp = getenv("UPMPD_HOST"))
 		mpdhost = cp;
 	if (cp = getenv("UPMPD_PORT"))
 		mpdport = atoi(cp);
+	if (cp = getenv("UPMPD_FRIENDLYNAME"))
+		friendlyname = atoi(cp);
 	if (cp = getenv("UPMPD_CONFIG"))
 		configfile = cp;
 
@@ -1020,6 +1024,8 @@ int main(int argc, char *argv[])
 			case 'D':	op_flags |= OPT_D; break;
 			case 'c':	op_flags |= OPT_c; if (argc < 2)  Usage();
 				configfile = *(++argv); argc--; goto b1;
+			case 'f':	op_flags |= OPT_f; if (argc < 2)  Usage();
+				friendlyname = *(++argv); argc--; goto b1;
 			case 'd':	op_flags |= OPT_d; if (argc < 2)  Usage();
 				logfilename = *(++argv); argc--; goto b1;
 			case 'h':	op_flags |= OPT_h; if (argc < 2)  Usage();
@@ -1045,6 +1051,8 @@ int main(int argc, char *argv[])
 		string value;
 		if (!(op_flags & OPT_d))
 			config.get("logfilename", logfilename);
+		if (!(op_flags & OPT_f))
+			config.get("friendlyname", friendlyname);
 		if (!(op_flags & OPT_l) && config.get("loglevel", value))
 			loglevel = atoi(value.c_str());
 		if (!(op_flags & OPT_h))
@@ -1088,7 +1096,7 @@ int main(int argc, char *argv[])
 	}
 	
 	// Create unique ID
-	string UUID = LibUPnP::makeDevUUID(friendlyName);
+	string UUID = LibUPnP::makeDevUUID(friendlyname);
 
 	// Read our XML data.
 	string reason;
@@ -1099,8 +1107,9 @@ int main(int argc, char *argv[])
 		LOGFAT("Failed reading " << filename << " : " << reason << endl);
 		return 1;
 	}
-	// Update device description with UUID
+	// Update device description with UUID and friendlyname
     description = regsub1("@UUID@", description, UUID);
+    description = regsub1("@FRIENDLYNAME@", description, friendlyname);
 
 	string rdc_scdp;
 	filename = datadir + "RenderingControl.xml";

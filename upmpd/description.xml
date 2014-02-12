@@ -6,7 +6,7 @@
   </specVersion>
   <device>
     <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
-    <friendlyName>UpMPD</friendlyName>
+    <friendlyName>@FRIENDLYNAME@</friendlyName>
     <manufacturer>JF Light Industries</manufacturer>
     <manufacturerURL>http://www.github.com/medoc92/upmpd</manufacturerURL>
     <modelDescription>UPnP front-end to MPD</modelDescription>
