@@ -1,5 +1,5 @@
 Source: upmpdcli
-Section: unknown
+Section: contrib/sound
 Priority: extra
 Maintainer: Jean-Francois Dockes <jf@dockes.org>
 Build-Depends: debhelper (>= 8.0.0), autotools-dev, libmpdclient-dev, 
@@ -10,7 +10,7 @@ Homepage: http://www.lesbonscomptes.com/upmpdcli
 Package: upmpdcli
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: An UPnP Media Renderer front-end to MPD, the Music Player Daemon
+Description: UPnP Media Renderer front-end to MPD, the Music Player Daemon
  upmpdcli acts as an UPnP Media Renderer on the front-end so that you can
  control it with any UPnP controller like, e.g. Audionet or BubbleUPnP on an
  Android tablet. It uses an MPD instance to actually play the tracks. 

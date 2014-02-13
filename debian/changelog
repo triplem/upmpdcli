@@ -3,7 +3,7 @@ upmpdcli (0.4-1) unstable; urgency=low
   * Adapt to off_t size in libupnp and availability of log/debug functions.
   * FriendlyName configuration parameter.
 
- -- Jean-Francois Dockes <jf@dockes.org>  Mon, 10 Feb 2014 14:09:20 +0100
+ -- Jean-Francois Dockes <jf@dockes.org>  Mon, 12 Feb 2014 10:07:13 +0100
 upmpdcli (0.3-1) unstable; urgency=low
 
   * Removed DB volume interface, this was confusing some players
