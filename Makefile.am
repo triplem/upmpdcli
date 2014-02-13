@@ -35,6 +35,7 @@ libupnpp_la_SOURCES = \
     libupnpp/vdir.hxx \
     libupnpp/workqueue.hxx
 
+libupnpp_la_LDFLAGS = -release $(VERSION)
 libupnpp_la_LIBADD = -lixml -lupnp -lexpat -lpthread -lrt
 
 bin_PROGRAMS = upmpdcli #upexplorer 
@@ -54,9 +55,9 @@ upmpdcli_SOURCES = \
 
 upmpdcli_LDADD = libupnpp.la -lmpdclient 
 
-
 dist_pkgdata_DATA = upmpd/description.xml upmpd/AVTransport.xml \
                   upmpd/RenderingControl.xml
-dist_sysconf_DATA = upmpd/upmpdcli.conf
+
+#dist_sysconf_DATA = upmpd/upmpdcli.conf
 
 dist_man1_MANS = man/upmpdcli.1
