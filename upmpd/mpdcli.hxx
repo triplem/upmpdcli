@@ -63,6 +63,7 @@ public:
     bool random(bool on);
     bool single(bool on);
     bool seek(int seconds);
+    bool clearQueue();
     int insert(const std::string& uri, int pos);
     bool deleteId(int id);
     bool statId(int id);

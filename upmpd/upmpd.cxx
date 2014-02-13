@@ -41,8 +41,12 @@ static const string dfltFriendlyName("UpMpd");
 // The UPnP MPD frontend device with its 2 services
 class UpMpd : public UpnpDevice {
 public:
+	enum Options {
+		upmpdNone,
+		upmpdOwnQueue, // The MPD belongs to us, we shall clear it as we like
+	};
 	UpMpd(const string& deviceid, const unordered_map<string, string>& xmlfiles,
-		  MPDCli *mpdcli);
+		  MPDCli *mpdcli, Options opts = upmpdNone);
 
 	// RenderingControl
 	int setMute(const SoapArgs& sc, SoapData& data);
@@ -96,6 +100,7 @@ private:
 	// changes to avoid saturating with small requests.
 	int m_desiredvolume;
 
+	int m_options;
 };
 
 static const string serviceIdRender("urn:upnp-org:serviceId:RenderingControl");
@@ -103,8 +108,9 @@ static const string serviceIdTransport("urn:upnp-org:serviceId:AVTransport");
 
 UpMpd::UpMpd(const string& deviceid, 
 			 const unordered_map<string, string>& xmlfiles,
-			 MPDCli *mpdcli)
-	: UpnpDevice(deviceid, xmlfiles), m_mpdcli(mpdcli), m_desiredvolume(-1)
+			 MPDCli *mpdcli, Options opts)
+	: UpnpDevice(deviceid, xmlfiles), m_mpdcli(mpdcli), m_desiredvolume(-1),
+	  m_options(opts)
 {
 	addServiceType(serviceIdRender,
 				   "urn:schemas-upnp-org:service:RenderingControl:1");
@@ -629,6 +635,14 @@ int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
 	if (it != sc.args.end())
 		metadata = it->second;
 
+	if ((m_options & upmpdOwnQueue) && !setnext) {
+		// If we own the queue, just clear it before setting the
+		// track.  Else it's difficult to impossible to prevent it
+		// from growing if upmpdcli restarts. If the option is not set, the
+		// user prefers to live with the issue.
+		m_mpdcli->clearQueue();
+	}
+
 	const struct MpdStatus &mpds = m_mpdcli->getStatus();
 	bool is_song = (mpds.state == MpdStatus::MPDS_PLAY) || 
 		(mpds.state == MpdStatus::MPDS_PAUSE);
@@ -639,8 +653,9 @@ int UpMpd::setAVTransportURI(const SoapArgs& sc, SoapData& data, bool setnext)
 
 	// curpos == -1 means that the playlist was cleared or we just started. A
 	// play will use position 0, so it's actually equivalent to curpos == 0
-	if (curpos == -1)
+	if (curpos == -1) {
 		curpos = 0;
+	}
 
 	if (mpds.qlen == 0 && setnext) {
 		LOGDEB("setNextAVTRansportURI invoked but empty queue!" << endl);
@@ -974,6 +989,8 @@ static int op_flags;
 #define OPT_c     0x20
 #define OPT_l     0x40
 #define OPT_f     0x80
+#define OPT_q     0x100
+
 static const char usage[] = 
 "-c configfile \t configuration file to use\n"
 "-h host    \t specify host MPD is running on\n"
@@ -982,6 +999,7 @@ static const char usage[] =
 "-l loglevel\t  log level (0-6)\n"
 "-D          \t run as a daemon\n"
 "-f friendlyname\t define device displayed name\n"
+"-q 0|1      \t if set, we own the mpd queue, else avoid clearing it whenever we feel like it"
 "  \n\n"
 			;
 static void
@@ -1005,6 +1023,7 @@ int main(int argc, char *argv[])
 	int loglevel(upnppdebug::Logger::LLINF);
 	string configfile;
 	string friendlyname(dfltFriendlyName);
+	bool ownqueue = true;
 
 	const char *cp;
 	if ((cp = getenv("UPMPD_HOST")))
@@ -1037,6 +1056,8 @@ int main(int argc, char *argv[])
 				loglevel = atoi(*(++argv)); argc--; goto b1;
 			case 'p':	op_flags |= OPT_p; if (argc < 2)  Usage();
 				mpdport = atoi(*(++argv)); argc--; goto b1;
+			case 'q':	op_flags |= OPT_q; if (argc < 2)  Usage();
+				ownqueue = atoi(*(++argv)) != 0; argc--; goto b1;
 			default: Usage();	break;
 			}
 	b1: argc--; argv++;
@@ -1062,6 +1083,9 @@ int main(int argc, char *argv[])
 			config.get("mpdhost", mpdhost);
 		if (!(op_flags & OPT_p) && config.get("mpdport", value)) {
 			mpdport = atoi(value.c_str());
+		}
+		if (!(op_flags & OPT_q) && config.get("ownqueue", value)) {
+			ownqueue = atoi(value.c_str()) != 0;
 		}
 	}
 
@@ -1135,7 +1159,8 @@ int main(int argc, char *argv[])
 	xmlfiles["AVTransport.xml"] = avt_scdp;
 
 	// Initialize the UPnP device object.
-	UpMpd device(string("uuid:") + UUID, xmlfiles, &mpdcli);
+	UpMpd device(string("uuid:") + UUID, xmlfiles, &mpdcli,
+				 ownqueue?UpMpd::upmpdOwnQueue:UpMpd::upmpdNone);
 
 	LOGDEB("Entering event loop" << endl);
 

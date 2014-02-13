@@ -359,13 +359,19 @@ int MPDCli::insert(const string& uri, int pos)
     if (!updStatus())
         return -1;
 
-    int id = mpd_run_add_id_to(M_CONN, uri.c_str(), (unsigned)pos);
+    int id;
+    RETRY_CMD((id=mpd_run_add_id_to(M_CONN, uri.c_str(), (unsigned)pos))!=-1);
 
-    if (id < 0) {
-        showError("MPDCli::run_add_id");
-        return -1;
-    }
     return id;
+}
+bool MPDCli::clearQueue()
+{
+    LOGDEB("MPDCli::clearQueue " << endl);
+    if (!ok())
+        return -1;
+
+    RETRY_CMD(mpd_run_clear(M_CONN));
+    return true;
 }
 bool MPDCli::deleteId(int id)
 {
@@ -374,7 +380,7 @@ bool MPDCli::deleteId(int id)
         return -1;
 
     RETRY_CMD(mpd_run_delete_id(M_CONN, (unsigned)id));
-    return false;
+    return true;
 }
 bool MPDCli::statId(int id)
 {
