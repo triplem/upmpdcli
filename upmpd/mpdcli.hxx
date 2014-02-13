@@ -77,7 +77,11 @@ private:
     void *m_conn;
     bool m_ok;
     MpdStatus m_stat;
+    // Saved volume while muted.
     int m_premutevolume;
+    // Volume that we use when MPD is stopped (does not return a
+    // volume in the status)
+    int m_cachedvolume; 
     std::string m_host;
     int m_port;
     std::string m_password;
