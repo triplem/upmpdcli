@@ -1,6 +1,6 @@
 Summary:        UPnP Media Renderer front-end to MPD, the Music Player Daemon
 Name:           upmpdcli
-Version:        0.4
+Version:        0.5
 Release:        1%{?dist}
 Group:          Applications/Multimedia
 License:        GPLv2+
@@ -37,11 +37,14 @@ on Android tablets or phones.
 %files
 %defattr(-, root, root, -)
 %{_bindir}/%{name}
-%{_libdir}/libupnpp.so*
+%{_libdir}/libupnpp-%{version}.so*
+%{_libdir}/libupnpp.so
 %{_datadir}/%{name}
-%{_datadir}/%{name}/*
+#%{_datadir}/%{name}/*
 %{_mandir}/man1/%{name}.1*
 
 %changelog
+* Thu Feb 13 2014 J.F. Dockes <jf@dockes.org> - 0.5
+- Version 0.5
 * Wed Feb 12 2014 J.F. Dockes <jf@dockes.org> - 0.4
 - Version 0.4
