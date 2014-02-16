@@ -5,6 +5,7 @@ pkgver=0.5
 pkgrel=1
 pkgdesc="an UPnP front-end to the Music Player Daemon"
 license="GPL"
+depends=('libupnp')
 builddepends=(autoconf)
 arch=(i686 x86_64)
 
