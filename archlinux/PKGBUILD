@@ -8,7 +8,7 @@ license="GPL"
 builddepends=(autoconf)
 arch=(i686 x86_64)
 
-source=("https://github.com/medoc92/upmpdcli/archive/v0.5.tar.gz")
+source=("http://github.com/medoc92/upmpdcli/archive/v0.5.tar.gz")
 md5sums=('0e6623503f18eb7230aef8334084af4e')
 
 backup=()
